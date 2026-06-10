@@ -6,6 +6,7 @@
     },
     "dependencies": {
         "@vercel/analytics": "latest",
+        "@vercel/speed-insights": "latest",
         "@vitejs/plugin-react": "4.3.4",
         "vite": "5.4.21",
         "typescript": "latest",
