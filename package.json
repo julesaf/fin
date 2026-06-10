@@ -5,6 +5,7 @@
         "preview": "vite preview --host 127.0.0.1"
     },
     "dependencies": {
+        "@vercel/analytics": "latest",
         "@vitejs/plugin-react": "4.3.4",
         "vite": "5.4.21",
         "typescript": "latest",
