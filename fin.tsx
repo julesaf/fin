@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, createContext, useContext } from "react";
 import { ComposedChart, Area, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip as RT, ResponsiveContainer, Legend, ReferenceArea, ReferenceLine } from "recharts";
-import { Plus, Download, Upload, X, Trash2, ArrowLeft, TrendingUp, TrendingDown, Sun, Moon, ArrowUpRight, ArrowDownRight, LayoutDashboard, Layers, Pencil, Check, LogOut } from "lucide-react";
+import { Plus, Download, Upload, X, Trash2, ArrowLeft, TrendingUp, TrendingDown, Sun, Moon, ArrowUpRight, ArrowDownRight, LayoutDashboard, Layers, Pencil, Check, LogOut, ShieldCheck, CloudOff, AlertCircle, PieChart as PieChartIcon } from "lucide-react";
 
 const ACC = '#E8364A';
 const VALC = '#38BDF8';
@@ -717,83 +717,141 @@ function ConfirmDel({ msg, onOk, onCancel }) {
         </Sheet>
     );
 }
-function WelcomeModal({ onDemo, onEmpty, onImport, canClose, onClose }) {
-    const T = useT(); const { isMobile } = useBreakpoint(); const fileRef = useRef(null);
-    const steps = [
-        { Icon: Layers, title: 'Créez une poche', text: 'Une « poche » = un placement (PEA, assurance-vie, crypto, immobilier…). Donnez-lui un nom et c\'est parti.', color: ACC },
-        { Icon: Plus, title: 'Saisissez vos montants', text: 'Notez ce que vous versez ou retirez, puis la valeur de votre poche à chaque relevé.', color: VALC },
-        { Icon: TrendingUp, title: 'Suivez la performance', text: 'L\'app calcule automatiquement vos gains, votre rendement et l\'évolution dans le temps.', color: GRN },
-    ];
-    const options = [
-        { color: VALC, Icon: ArrowUpRight, kicker: 'Je découvre', title: 'Voir une démonstration', sub: 'Je ne connais pas encore l\'appli : explorez un exemple complet, sans rien saisir.', cta: 'Lancer la démo', onClick: onDemo },
-        { color: GRN, Icon: Plus, kicker: 'Je me lance', title: 'Créer mon suivi', sub: 'Je connais le principe et je veux commencer mon propre suivi à partir de zéro.', cta: 'Démarrer vierge', onClick: onEmpty },
-        { color: AMB, Icon: Download, kicker: 'Je reviens', title: 'Reprendre mon suivi', sub: 'Je suis déjà utilisateur : importez votre fichier pour retrouver vos données.', cta: 'Importer un fichier', onClick: () => fileRef.current?.click() },
-    ];
+function LandingDemoMockup() {
+    const { isMobile } = useBreakpoint();
+    const demoPm = D_P.map(p => ({ ...p, ...getPocheMetrics(p.id, D_T, D_V) }));
+    const totalValue = demoPm.reduce((s, p) => s + p.valActu, 0);
+    const totalCapital = demoPm.reduce((s, p) => s + p.capital, 0);
+    const totalGain = demoPm.reduce((s, p) => s + p.gainLatent, 0);
+    const gainPct = totalCapital > 0 ? totalGain / totalCapital : null;
+    const chart = [...new Set(D_V.map(v => v.date))].sort().map(d => {
+        const value = D_P.reduce((s, p) => {
+            const last = D_V.filter(v => v.pocheId === p.id && v.date <= d).sort((a, b) => b.date.localeCompare(a.date))[0];
+            return s + (last ? last.valeur : 0);
+        }, 0);
+        const capital = capitalAtDate(D_P.map(p => p.id), D_T, d);
+        const perf = perfAtDate(D_P.map(p => p.id), D_T, d, value);
+        return { date: d.slice(0, 7), value, capital, perf };
+    });
+    const lastTxs = [...D_T].sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, 4);
     return (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 220, background: T.dark ? '#08080C' : '#F7F6FC', color: T.t1, overflowY: 'auto', fontFamily: 'system-ui,-apple-system,sans-serif' }}>
-            <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: isMobile ? '1.25rem' : '2.2rem', boxSizing: 'border-box', background: T.dark ? `linear-gradient(135deg,${ACC}18 0%,transparent 32%),linear-gradient(315deg,${VALC}12 0%,transparent 30%)` : `linear-gradient(135deg,${ACC}0D 0%,transparent 32%),linear-gradient(315deg,${VALC}14 0%,transparent 30%)` }}>
-                <div style={{ width: '100%', maxWidth: 1080, margin: '0 auto' }}>
-                    {/* En-tête */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: isMobile ? '1.1rem' : '1.6rem' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}>
-                            <span style={{ width: 30, height: 30, borderRadius: 9, background: `linear-gradient(135deg,${ACC},#FF6B6B)`, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '.62rem', fontWeight: 900, boxShadow: `0 0 16px ${ACC}55` }}>IT</span>
-                            <span style={{ fontWeight: 800, fontSize: '.92rem', color: T.t1 }}>InvestTrack</span>
-                        </div>
-                        {canClose && <button onClick={onClose} title="Fermer" aria-label="Fermer" style={{ width: 34, height: 34, borderRadius: 9, border: `1px solid ${T.brd}`, background: T.s1, color: T.t2, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><X size={16} /></button>}
-                    </div>
-
-                    {/* Hero + scénario */}
-                    <div style={{ textAlign: 'center', maxWidth: 720, margin: '0 auto', marginBottom: isMobile ? '1.4rem' : '2rem' }}>
-                        <h1 style={{ margin: 0, fontSize: isMobile ? '2rem' : '3rem', lineHeight: 1.04, fontWeight: 900 }}>Suivez vos placements, sans tableurs.</h1>
-                        <p style={{ margin: '.9rem auto 0', color: T.t2, fontSize: isMobile ? '.88rem' : '1rem', lineHeight: 1.65, maxWidth: 560 }}>Regroupez tout votre argent au même endroit et sachez enfin combien vous gagnez vraiment — en 3 étapes simples.</p>
-                    </div>
-
-                    {/* 3 étapes du scénario */}
-                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,1fr)', gap: isMobile ? 10 : 14, marginBottom: isMobile ? '1.6rem' : '2.2rem', position: 'relative' }}>
-                        {steps.map((s, i) => (
-                            <div key={s.title} style={{ borderRadius: 14, border: `1px solid ${T.brd}`, background: T.s1, padding: isMobile ? '1rem' : '1.15rem', position: 'relative' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 9 }}>
-                                    <span style={{ width: 36, height: 36, borderRadius: 11, background: `${s.color}16`, border: `1px solid ${s.color}38`, color: s.color, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><s.Icon size={18} /></span>
-                                    <span style={{ fontSize: '.66rem', fontWeight: 800, letterSpacing: '.1em', color: s.color, textTransform: 'uppercase' }}>Étape {i + 1}</span>
-                                </div>
-                                <div style={{ color: T.t1, fontWeight: 800, fontSize: '.92rem', marginBottom: 4 }}>{s.title}</div>
-                                <div style={{ color: T.t2, fontSize: '.76rem', lineHeight: 1.55 }}>{s.text}</div>
+        <div style={{ padding: 'clamp(1rem,3vw,2rem)', background: 'radial-gradient(circle at top, rgba(255,255,255,0.035) 0%, transparent 70%)', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0,1.2fr) minmax(210px,.8fr)', gap: 18, minHeight: isMobile ? 0 : 420 }}>
+            <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 15 }}>
+                <div>
+                    <div style={{ fontSize: '.68rem', color: '#8080A8', textTransform: 'uppercase', letterSpacing: '.1em', fontWeight: 700, marginBottom: 6 }}>Portefeuille total</div>
+                    <div style={{ fontSize: 'clamp(2rem,5vw,3.5rem)', fontWeight: 850, lineHeight: 1, letterSpacing: '-.04em' }}>{fEUR(totalValue)}</div>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 9 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.05)', padding: '6px 12px', borderRadius: 8, fontSize: '.78rem', border: '1px solid rgba(255,255,255,0.08)' }}>Rendement <strong style={{ color: GRN }}>{fPctS(gainPct)}</strong></span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.05)', padding: '6px 12px', borderRadius: 8, fontSize: '.78rem', border: '1px solid rgba(255,255,255,0.08)' }}>Capital <strong>{fEUR(totalCapital)}</strong></span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: `${GRN}12`, color: GRN, padding: '6px 12px', borderRadius: 8, fontSize: '.78rem', border: `1px solid ${GRN}2E` }}>Gain {fEURS(totalGain)}</span>
+                </div>
+                <div style={{ flex: 1, minHeight: 190, borderRadius: 14, border: '1px solid rgba(56,189,248,.18)', background: 'linear-gradient(180deg, rgba(56,189,248,0.08) 0%, rgba(56,189,248,0.01) 100%)', overflow: 'hidden' }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                        <ComposedChart data={chart} margin={{ top: 22, right: 12, left: -12, bottom: 0 }}>
+                            <defs><linearGradient id="landingDemoFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={VALC} stopOpacity={0.28} /><stop offset="100%" stopColor={VALC} stopOpacity={0.02} /></linearGradient></defs>
+                            <CartesianGrid stroke="rgba(255,255,255,.06)" vertical={false} />
+                            <XAxis dataKey="date" tick={{ fill: '#8080A8', fontSize: 10 }} axisLine={false} tickLine={false} minTickGap={16} />
+                            <YAxis hide domain={[0, 'dataMax + 2500']} />
+                            <RT contentStyle={{ background: '#15151C', border: '1px solid rgba(255,255,255,.12)', borderRadius: 10, color: '#EEEEFF', fontSize: '.75rem' }} formatter={v => fEUR(v)} />
+                            <Area type="monotone" dataKey="value" fill="url(#landingDemoFill)" stroke={VALC} strokeWidth={2.4} dot={false} />
+                            <Line type="monotone" dataKey="capital" stroke="#F8FAFC" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
+                        </ComposedChart>
+                    </ResponsiveContainer>
+                </div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+                <div style={{ border: '1px solid rgba(255,255,255,.08)', borderRadius: 14, padding: 13, background: 'rgba(255,255,255,.025)' }}>
+                    <div style={{ color: '#8080A8', fontSize: '.66rem', textTransform: 'uppercase', letterSpacing: '.09em', fontWeight: 800, marginBottom: 10 }}>Répartition</div>
+                    <div style={{ display: 'grid', gap: 10 }}>
+                        {demoPm.map(p => (
+                            <div key={p.id}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: '.76rem', marginBottom: 5 }}><span>{p.nom}</span><strong>{Math.round((p.valActu / totalValue) * 100)}%</strong></div>
+                                <div style={{ height: 6, borderRadius: 99, background: 'rgba(255,255,255,.07)', overflow: 'hidden' }}><div style={{ width: `${(p.valActu / totalValue) * 100}%`, height: '100%', background: p.couleur, borderRadius: 99 }} /></div>
                             </div>
                         ))}
                     </div>
-
-                    {/* 3 options de démarrage, colorées */}
-                    <div style={{ textAlign: 'center', marginBottom: isMobile ? '.9rem' : '1.1rem' }}>
-                        <div style={{ color: T.t1, fontWeight: 800, fontSize: isMobile ? '1.05rem' : '1.25rem' }}>Comment voulez-vous commencer ?</div>
-                        <div style={{ color: T.t3, fontSize: '.74rem', marginTop: 3 }}>Choisissez le profil qui vous correspond — c'est gratuit et sans inscription.</div>
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,1fr)', gap: isMobile ? 11 : 14 }}>
-                        {options.map(o => (
-                            <button key={o.title} onClick={o.onClick} style={{ textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', borderRadius: 16, border: `1.5px solid ${o.color}55`, background: T.dark ? `linear-gradient(180deg,${o.color}1A 0%,${T.s1} 60%)` : `linear-gradient(180deg,${o.color}12 0%,${T.s1} 60%)`, padding: isMobile ? '1.1rem' : '1.3rem', display: 'flex', flexDirection: 'column', gap: 12, boxShadow: `0 10px 34px ${o.color}24`, transition: 'transform .14s, box-shadow .14s' }}
-                                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = `0 16px 44px ${o.color}3A`; }}
-                                onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = `0 10px 34px ${o.color}24`; }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                    <span style={{ width: 44, height: 44, borderRadius: 13, background: o.color, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 6px 18px ${o.color}55`, flexShrink: 0 }}><o.Icon size={22} /></span>
-                                    <span style={{ fontSize: '.62rem', fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: o.color, background: `${o.color}1F`, border: `1px solid ${o.color}3A`, borderRadius: 99, padding: '.25rem .55rem' }}>{o.kicker}</span>
-                                </div>
-                                <div>
-                                    <div style={{ color: T.t1, fontWeight: 800, fontSize: '1.02rem', marginBottom: 5 }}>{o.title}</div>
-                                    <div style={{ color: T.t2, fontSize: '.78rem', lineHeight: 1.55 }}>{o.sub}</div>
-                                </div>
-                                <span style={{ marginTop: 'auto', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '.6rem .9rem', borderRadius: 10, background: o.color, color: '#fff', fontWeight: 700, fontSize: '.82rem' }}>{o.cta} <ArrowUpRight size={15} /></span>
-                            </button>
+                </div>
+                <div style={{ border: '1px solid rgba(255,255,255,.08)', borderRadius: 14, padding: 13, background: 'rgba(255,255,255,.025)' }}>
+                    <div style={{ color: '#8080A8', fontSize: '.66rem', textTransform: 'uppercase', letterSpacing: '.09em', fontWeight: 800, marginBottom: 10 }}>Derniers mouvements</div>
+                    <div style={{ display: 'grid', gap: 8 }}>
+                        {lastTxs.map(t => (
+                            <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, fontSize: '.74rem' }}>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 }}><Dot c={txC(t.type)} sz={6} />{txL(t.type)}</span>
+                                <strong style={{ color: t.type === 'retrait' || t.type === 'frais' ? LOSSC : GRN, fontVariantNumeric: 'tabular-nums' }}>{t.type === 'retrait' || t.type === 'frais' ? '-' : '+'}{fEUR(t.montant)}</strong>
+                            </div>
                         ))}
-                        <input ref={fileRef} type="file" accept=".json" style={{ display: 'none' }} onChange={onImport} />
-                    </div>
-
-                    {/* Réassurance */}
-                    <div style={{ marginTop: isMobile ? '1.3rem' : '1.7rem', display: 'flex', justifyContent: 'center' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: T.t2, fontSize: '.74rem', borderRadius: 99, border: `1px solid ${GRN}33`, background: T.dark ? `${GRN}10` : `${GRN}0A`, padding: '.5rem .9rem' }}>
-                            <Check size={15} color={GRN} /> <span><strong style={{ color: T.t1 }}>100 % privé.</strong> Vos données restent sur votre appareil. Exportez-les quand vous voulez.</span>
-                        </div>
                     </div>
                 </div>
             </div>
+        </div>
+    );
+}
+
+function WelcomeModal({ onEmpty, onImport, canClose, onClose }) {
+    const { isMobile } = useBreakpoint(); const fileRef = useRef(null);
+    const revealStyle = { opacity: 1, transform: 'translateY(0)', transition: 'all .8s cubic-bezier(.2,.8,.2,1)' };
+    const openApp = () => canClose ? onClose() : onEmpty();
+    const trust = [
+        { Icon: ShieldCheck, title: 'Zéro risque bancaire', text: 'Aucune connexion à votre banque n\'est demandée. Vous saisissez vos montants, c\'est vous qui avez la main.' },
+        { Icon: CloudOff, title: 'Zéro serveur distant', text: 'Toutes vos données financières restent sauvegardées directement dans votre navigateur. Rien ne fuite.' },
+        { Icon: Download, title: '100% portable', text: 'Exportez tout votre suivi dans un simple fichier en un seul clic. Vous n\'êtes jamais bloqué chez nous.' },
+    ];
+    const features = [
+        { cls: 'large', Icon: TrendingUp, title: 'La vraie rentabilité', text: '1 000 € gagnés en 1 mois ou en 10 ans, ce n\'est pas la même chose. L\'application calcule automatiquement votre rendement annuel réel via le XIRR.' },
+        { Icon: PieChartIcon, title: 'Où est votre argent ?', text: 'Suivez facilement le poids de chaque placement dans votre patrimoine global grâce aux graphiques de répartition.', color: GRN },
+        { Icon: AlertCircle, title: 'Assistant intelligent', text: 'Oubli de mise à jour ? Capital devenu négatif par erreur ? L\'application vous alerte si elle détecte une anomalie.', color: VALC },
+        { cls: 'large', Icon: Layers, title: 'Séparez les apports des gains', text: 'Voir son solde augmenter c\'est bien, mais InvestTrack distingue clairement ce que vous avez versé de ce que vos placements ont généré.' },
+    ];
+    return (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 220, background: '#0A0A0E', color: '#EEEEFF', overflowY: 'auto', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', lineHeight: 1.6 }}>
+            <style>{`@media (max-width: 760px){.landing-demo-grid{grid-template-columns:1fr!important}.landing-bento{grid-template-columns:1fr!important}.landing-feature-large{grid-column:auto!important}.landing-demo-side{display:none!important}}`}</style>
+            <div style={{ position: 'absolute', width: 800, height: 800, background: `radial-gradient(circle, ${ACC}66 0%, rgba(0,0,0,0) 60%)`, top: -300, left: '50%', transform: 'translateX(-50%)', filter: 'blur(90px)', pointerEvents: 'none', opacity: .5 }} />
+            <nav style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: isMobile ? '1rem' : '1.5rem 2rem', maxWidth: 1200, margin: '0 auto', position: 'relative', zIndex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 800, fontSize: '1.2rem', letterSpacing: '-.03em' }}><div style={{ width: 32, height: 32, background: `linear-gradient(135deg,${ACC},#FF6B6B)`, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.7rem', fontWeight: 900, boxShadow: `0 0 16px ${ACC}66` }}>IT</div>InvestTrack</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <button onClick={openApp} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: isMobile ? '.55rem .8rem' : '.5rem 1rem', borderRadius: 12, fontWeight: 600, fontSize: isMobile ? '.78rem' : '.85rem', cursor: 'pointer', background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.08)', color: '#EEEEFF' }}>Ouvrir l'app <ArrowUpRight size={14} /></button>
+                    {canClose && <button onClick={onClose} title="Fermer" aria-label="Fermer" style={{ width: 36, height: 36, borderRadius: 10, border: '1px solid rgba(255,255,255,.08)', background: 'rgba(255,255,255,.03)', color: '#8080A8', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><X size={16} /></button>}
+                </div>
+            </nav>
+
+            <header style={{ textAlign: 'center', padding: isMobile ? '4rem 1rem 2rem' : '6rem 1rem 4rem', maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1 }}>
+                <div style={{ ...revealStyle, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '.4rem 1rem', background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 99, fontSize: '.8rem', fontWeight: 500, color: '#8080A8', marginBottom: '2rem' }}><span style={{ color: GRN }}>●</span> 100% privé - 100% gratuit</div>
+                <h1 style={{ ...revealStyle, transitionDelay: '100ms', fontSize: 'clamp(2.5rem,5vw,4.5rem)', fontWeight: 900, letterSpacing: '-.04em', lineHeight: 1.1, margin: '0 auto 1.5rem', maxWidth: 1000, background: 'linear-gradient(180deg,#FFFFFF 0%,rgba(255,255,255,.7) 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>Tout votre patrimoine réuni.<br />Votre vraie rentabilité révélée.</h1>
+                <p style={{ ...revealStyle, transitionDelay: '200ms', fontSize: 'clamp(1rem,2vw,1.25rem)', color: '#8080A8', maxWidth: 700, margin: '0 auto 2.5rem', lineHeight: 1.6 }}>PEA, cryptos, immobilier... Regroupez tous vos placements au même endroit. Obtenez une vision globale de vos finances en quelques clics, sans jamais que vos données ne quittent votre appareil.</p>
+                <div style={{ ...revealStyle, transitionDelay: '300ms', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                    <button onClick={openApp} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '.75rem 1.5rem', borderRadius: 12, fontWeight: 600, fontSize: '.95rem', cursor: 'pointer', background: ACC, color: '#fff', border: 'none', boxShadow: `0 4px 20px ${ACC}66` }}>Ouvrir l'application</button>
+                    <button onClick={() => fileRef.current?.click()} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '.75rem 1.5rem', borderRadius: 12, fontWeight: 600, fontSize: '.95rem', cursor: 'pointer', background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.08)', color: '#EEEEFF' }}><Upload size={18} />Importer mes données</button>
+                    <input ref={fileRef} type="file" accept=".json" style={{ display: 'none' }} onChange={onImport} />
+                </div>
+            </header>
+
+            <div style={{ maxWidth: 1000, margin: '0 auto 6rem', padding: '0 1rem', perspective: 1000 }}>
+                <div style={{ background: '#15151C', border: '1px solid rgba(255,255,255,.08)', borderRadius: 20, boxShadow: '0 30px 100px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.05) inset', overflow: 'hidden', transform: isMobile ? 'none' : 'rotateX(4deg) scale(.98)' }}>
+                    <div style={{ display: 'flex', gap: 6, padding: '1rem', borderBottom: '1px solid rgba(255,255,255,.08)', background: 'rgba(255,255,255,.02)' }}><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#FF5F56' }} /><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#FFBD2E' }} /><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#27C93F' }} /></div>
+                    <div className="landing-demo-grid" style={{ display: 'grid', gridTemplateColumns: '1fr' }}><LandingDemoMockup /></div>
+                </div>
+            </div>
+
+            <section style={{ padding: '6rem 1rem', maxWidth: 1100, margin: '0 auto' }}>
+                <div style={{ textAlign: 'center', marginBottom: '4rem' }}><h2 style={{ fontSize: 'clamp(2rem,4vw,2.5rem)', fontWeight: 800, letterSpacing: '-.03em', margin: '0 0 1rem' }}>Une intimité totale sur vos finances.</h2><p style={{ fontSize: 'clamp(1rem,2vw,1.25rem)', color: '#8080A8', maxWidth: 700, margin: '0 auto', lineHeight: 1.6 }}>Pas de création de compte. Pas de synchronisation bancaire requise. Vous gardez le contrôle total.</p></div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: '2rem' }}>
+                    {trust.map(item => <div key={item.title} style={{ textAlign: 'center', padding: '2rem', background: 'rgba(255,255,255,.02)', borderRadius: 20, border: '1px solid rgba(255,255,255,.08)' }}><div style={{ width: 56, height: 56, background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', color: VALC }}><item.Icon size={27} /></div><h3 style={{ fontSize: '1.2rem', margin: '0 0 .5rem' }}>{item.title}</h3><p style={{ color: '#8080A8', fontSize: '.95rem', margin: 0 }}>{item.text}</p></div>)}
+                </div>
+            </section>
+
+            <section style={{ padding: '6rem 1rem', maxWidth: 1100, margin: '0 auto' }}>
+                <div style={{ textAlign: 'center', marginBottom: '4rem' }}><h2 style={{ fontSize: 'clamp(2rem,4vw,2.5rem)', fontWeight: 800, letterSpacing: '-.03em', margin: 0 }}>Des indicateurs puissants, expliqués simplement.</h2></div>
+                <div className="landing-bento" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gridAutoRows: 'minmax(280px,auto)', gap: '1.5rem' }}>
+                    {features.map(item => <div key={item.title} className={item.cls === 'large' ? 'landing-feature-large' : undefined} style={{ gridColumn: item.cls === 'large' ? 'span 2' : 'auto', background: '#15151C', border: '1px solid rgba(255,255,255,.08)', borderRadius: 24, padding: '2.5rem 2rem', position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', minHeight: 280 }}><div style={{ position: 'absolute', top: '2rem', right: '2rem', color: item.color || ACC, background: `${item.color || ACC}1A`, padding: '1rem', borderRadius: 16 }}><item.Icon size={32} /></div><h3 style={{ fontSize: '1.4rem', margin: '0 0 .5rem', position: 'relative' }}>{item.title}</h3><p style={{ color: '#8080A8', fontSize: '.95rem', margin: 0, maxWidth: '85%', position: 'relative' }}>{item.text}</p></div>)}
+                </div>
+            </section>
+
+            <section style={{ textAlign: 'center', marginBottom: '4rem', padding: '6rem 1rem', maxWidth: 1100, marginLeft: 'auto', marginRight: 'auto' }}>
+                <h2 style={{ fontSize: 'clamp(2rem,4vw,2.5rem)', fontWeight: 800, margin: '0 0 1.5rem' }}>Prenez vos finances en main.</h2>
+                <button onClick={openApp} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '1rem 2rem', borderRadius: 12, fontWeight: 600, fontSize: '1.1rem', cursor: 'pointer', background: ACC, color: '#fff', border: 'none', boxShadow: `0 4px 20px ${ACC}66` }}>Commencer maintenant <ArrowUpRight size={20} /></button>
+                <p style={{ color: '#8080A8', fontSize: '.85rem', marginTop: '1.2rem' }}>Gratuit. Sans inscription. Fonctionne instantanément.</p>
+            </section>
         </div>
     );
 }
@@ -1376,7 +1434,6 @@ export default function App() {
     }, [pm, ps, ts, vs]);
 
     const markPersonal = () => { setDataMode(m => m === 'file' ? 'file' : 'saved'); setShowWelcome(false); };
-    const loadDemo = () => { setPs(D_P); setTs(D_T); setVs(D_V); setDataMode('demo'); setShowWelcome(false); setSelP(null); setPage('dashboard'); };
     const startEmpty = () => { setPs([]); setTs([]); setVs([]); setDataMode('empty'); setShowWelcome(false); setSelP(null); setPage('dashboard'); };
     const useDemoAsBase = () => { setDataMode('saved'); setShowWelcome(false); };
     const disconnectFile = async () => {
@@ -1454,7 +1511,7 @@ export default function App() {
                 </main>
             </div>
             {renderModal()}
-            {showWelcome && <WelcomeModal onDemo={loadDemo} onEmpty={startEmpty} onImport={impJSON} canClose={dataMode !== 'empty'} onClose={() => setShowWelcome(false)} />}
+            {showWelcome && <WelcomeModal onEmpty={startEmpty} onImport={impJSON} canClose={dataMode !== 'empty'} onClose={() => setShowWelcome(false)} />}
         </TC.Provider>
     );
 }
