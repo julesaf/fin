@@ -719,10 +719,15 @@ function ConfirmDel({ msg, onOk, onCancel }) {
 }
 function WelcomeModal({ onDemo, onEmpty, onImport }) {
     const T = useT(); const { isMobile } = useBreakpoint(); const fileRef = useRef(null);
-    const cards = [
-        { title: 'Poches', text: 'Capital, flux et catégories restent lisibles dès le premier écran.', color: ACC },
-        { title: 'Performance', text: 'XIRR, Dietz, latent et réalisé sont recalculés à chaque saisie.', color: VALC },
-        { title: 'Sauvegarde', text: 'Import et export JSON, sans compte ni serveur.', color: GRN },
+    const features = [
+        { Icon: Layers, title: 'Tout votre argent au même endroit', text: 'Bourse, crypto, immobilier, livrets… regroupez chaque placement dans une « poche » et voyez votre patrimoine total d\'un coup d\'œil.', color: ACC },
+        { Icon: TrendingUp, title: 'Savez si vous gagnez vraiment', text: 'L\'app calcule pour vous votre vrai rendement et vos gains, sans tableurs ni formules compliquées.', color: VALC },
+        { Icon: Check, title: '100 % privé, sans compte', text: 'Aucune inscription, aucune publicité. Vos données restent sur votre appareil et ne partent jamais ailleurs.', color: GRN },
+    ];
+    const options = [
+        { primary: true, onClick: onDemo, Icon: ArrowUpRight, title: 'Voir une démonstration', sub: 'Explorez l\'app avec un exemple, sans rien saisir.' },
+        { onClick: () => fileRef.current?.click(), Icon: Download, title: 'Reprendre mes données', sub: 'Vous avez déjà un fichier InvestTrack ? Importez-le.' },
+        { ghost: true, onClick: onEmpty, Icon: Plus, title: 'Démarrer de zéro', sub: 'Créez votre premier portefeuille en quelques clics.' },
     ];
     return (
         <div style={{ position: 'fixed', inset: 0, zIndex: 220, background: T.dark ? '#08080C' : '#F7F6FC', color: T.t1, overflowY: 'auto', fontFamily: 'system-ui,-apple-system,sans-serif' }}>
@@ -731,26 +736,31 @@ function WelcomeModal({ onDemo, onEmpty, onImport }) {
                     <section style={{ borderRadius: 16, border: `1px solid ${T.brd2}`, background: T.dark ? 'rgba(21,21,28,.84)' : 'rgba(255,255,255,.86)', boxShadow: T.dark ? '0 24px 90px rgba(0,0,0,.55)' : '0 24px 80px rgba(30,30,70,.12)', padding: isMobile ? '1.25rem' : '1.65rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: isMobile ? 'auto' : 440 }}>
                         <div>
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '.3rem .5rem', borderRadius: 10, background: `${ACC}14`, border: `1px solid ${ACC}2E`, color: ACC, fontSize: '.68rem', fontWeight: 800, marginBottom: '1.1rem' }}><span style={{ width: 20, height: 20, borderRadius: 7, background: ACC, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '.58rem' }}>IT</span>InvestTrack</div>
-                            <h1 style={{ margin: 0, fontSize: isMobile ? '2.15rem' : '3.35rem', lineHeight: .98, letterSpacing: 0, fontWeight: 900 }}>Votre portefeuille, propre dès le départ.</h1>
-                            <p style={{ margin: '1rem 0 0', color: T.t2, fontSize: isMobile ? '.86rem' : '.95rem', lineHeight: 1.75, maxWidth: 560 }}>Choisissez une démo, une sauvegarde JSON ou un espace vide. Rien n'est écrit dans le navigateur tant que vous n'avez pas choisi.</p>
+                            <h1 style={{ margin: 0, fontSize: isMobile ? '2.05rem' : '3.1rem', lineHeight: 1.02, letterSpacing: 0, fontWeight: 900 }}>Suivez tout votre argent, au même endroit.</h1>
+                            <p style={{ margin: '1rem 0 0', color: T.t2, fontSize: isMobile ? '.86rem' : '.95rem', lineHeight: 1.7, maxWidth: 560 }}>Réunissez vos comptes et placements pour voir, en un coup d'œil, combien vous possédez et ce que ça vous rapporte vraiment.</p>
                         </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,1fr)', gap: 8, marginTop: '1.4rem' }}>
-                            {cards.map(c => <div key={c.title} style={{ borderRadius: 10, background: T.s2, border: `1px solid ${T.brd}`, padding: '.8rem' }}><div style={{ width: 26, height: 3, borderRadius: 99, background: c.color, marginBottom: '.55rem' }} /><div style={{ color: T.t1, fontWeight: 800, fontSize: '.78rem', marginBottom: 4 }}>{c.title}</div><div style={{ color: T.t2, fontSize: '.7rem', lineHeight: 1.55 }}>{c.text}</div></div>)}
+                        <div style={{ display: 'grid', gap: 10, marginTop: '1.4rem' }}>
+                            {features.map(f => <div key={f.title} style={{ display: 'flex', gap: 11, alignItems: 'flex-start' }}><span style={{ width: 34, height: 34, borderRadius: 10, background: `${f.color}16`, border: `1px solid ${f.color}33`, color: f.color, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><f.Icon size={17} /></span><div><div style={{ color: T.t1, fontWeight: 800, fontSize: '.84rem', marginBottom: 2 }}>{f.title}</div><div style={{ color: T.t2, fontSize: '.74rem', lineHeight: 1.55 }}>{f.text}</div></div></div>)}
                         </div>
                     </section>
                     <aside style={{ borderRadius: 16, border: `1px solid ${T.brd}`, background: T.s1, padding: isMobile ? '1.1rem' : '1.35rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxShadow: T.dark ? '0 18px 70px rgba(0,0,0,.45)' : '0 18px 60px rgba(30,30,70,.1)' }}>
                         <div>
-                            <div style={{ fontSize: '.62rem', color: T.t3, textTransform: 'uppercase', letterSpacing: '.14em', fontWeight: 800, marginBottom: '.8rem' }}>Démarrage</div>
-                            <div style={{ display: 'grid', gap: 8 }}>
-                                <Btn primary onClick={onDemo} style={{ justifyContent: 'space-between', minHeight: 48, fontSize: '.82rem' }}>Explorer la démo <ArrowUpRight size={15} /></Btn>
-                                <Btn onClick={() => fileRef.current?.click()} style={{ justifyContent: 'space-between', minHeight: 48, fontSize: '.82rem' }}>Importer un fichier JSON <Upload size={15} /></Btn>
-                                <Btn ghost onClick={onEmpty} style={{ justifyContent: 'space-between', minHeight: 48, fontSize: '.82rem' }}>Commencer vierge <Plus size={15} /></Btn>
+                            <div style={{ color: T.t1, fontWeight: 800, fontSize: '1rem', marginBottom: 4 }}>Par où commencer ?</div>
+                            <div style={{ color: T.t2, fontSize: '.74rem', marginBottom: '1rem' }}>Aucune carte bancaire, c'est gratuit et instantané.</div>
+                            <div style={{ display: 'grid', gap: 9 }}>
+                                {options.map(o => {
+                                    const accent = o.primary; const ghost = o.ghost;
+                                    return <button key={o.title} onClick={o.onClick} style={{ display: 'flex', alignItems: 'center', gap: 11, textAlign: 'left', padding: '.7rem .85rem', borderRadius: 11, cursor: 'pointer', fontFamily: 'inherit', minHeight: 58, transition: 'all .14s', border: accent ? 'none' : `1px solid ${T.brd}`, background: accent ? ACC : ghost ? 'transparent' : T.s2, color: accent ? '#fff' : T.t1, boxShadow: accent ? `0 6px 22px ${ACC}45` : 'none' }}>
+                                        <span style={{ width: 30, height: 30, borderRadius: 9, background: accent ? 'rgba(255,255,255,.18)' : `${ACC}14`, color: accent ? '#fff' : ACC, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><o.Icon size={16} /></span>
+                                        <span style={{ flex: 1 }}><span style={{ display: 'block', fontWeight: 700, fontSize: '.82rem' }}>{o.title}</span><span style={{ display: 'block', fontSize: '.68rem', lineHeight: 1.4, color: accent ? 'rgba(255,255,255,.8)' : T.t2, marginTop: 1 }}>{o.sub}</span></span>
+                                    </button>;
+                                })}
                                 <input ref={fileRef} type="file" accept=".json" style={{ display: 'none' }} onChange={onImport} />
                             </div>
                         </div>
-                        <div style={{ marginTop: '1.2rem', borderRadius: 12, border: `1px solid ${T.brd}`, background: T.s2, padding: '.85rem' }}>
-                            <div style={{ color: T.t1, fontWeight: 800, fontSize: '.74rem', marginBottom: 5 }}>Stockage local</div>
-                            <div style={{ color: T.t2, fontSize: '.7rem', lineHeight: 1.6 }}>La déconnexion d'un fichier importé efface uniquement la copie locale utilisée par l'application.</div>
+                        <div style={{ marginTop: '1.2rem', borderRadius: 12, border: `1px solid ${GRN}30`, background: T.dark ? `${GRN}12` : `${GRN}0C`, padding: '.85rem', display: 'flex', gap: 9, alignItems: 'flex-start' }}>
+                            <Check size={16} color={GRN} style={{ flexShrink: 0, marginTop: 1 }} />
+                            <div style={{ color: T.t2, fontSize: '.72rem', lineHeight: 1.6 }}><strong style={{ color: T.t1 }}>Vos données vous appartiennent.</strong> Elles restent sur cet appareil. Exportez-les quand vous voulez pour les sauvegarder ou changer d'ordinateur.</div>
                         </div>
                     </aside>
                 </div>
@@ -788,6 +798,7 @@ function BottomNav({ page, setPage, setSelP, setModal }) {
 function TopBar({ page, selP, setPage, setSelP, mode, setMode, setModal, expJSON, impJSON, dataMode, disconnectFile }) {
     const T = useT(); const { isMobile } = useBreakpoint();
     const activeTab = selP ? '_' : page;
+    const hasData = dataMode === 'file' || dataMode === 'saved';
     const logo = (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ width: 28, height: 28, borderRadius: 8, background: `linear-gradient(135deg,${ACC},#FF6B6B)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.6rem', fontWeight: 900, color: '#fff', boxShadow: `0 0 16px ${ACC}55`, flexShrink: 0 }}>IT</div>
@@ -801,7 +812,7 @@ function TopBar({ page, selP, setPage, setSelP, mode, setMode, setModal, expJSON
                 <div style={{ flex: 1 }} />
                 <button title="Exporter" aria-label="Exporter" onClick={expJSON} style={{ width: 36, height: 36, borderRadius: 8, border: `1px solid ${T.brd}`, background: 'transparent', color: T.t2, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Download size={15} /></button>
                 <label title="Importer" aria-label="Importer" style={{ width: 36, height: 36, borderRadius: 8, border: `1px solid ${T.brd}`, background: 'transparent', color: T.t2, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Upload size={15} /><input type="file" accept=".json" style={{ display: 'none' }} onChange={impJSON} /></label>
-                {dataMode === 'file' && <button title="Déconnecter le fichier" aria-label="Déconnecter le fichier" onClick={disconnectFile} style={{ width: 36, height: 36, borderRadius: 8, border: `1px solid ${AMB}40`, background: `${AMB}10`, color: AMB, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><LogOut size={15} /></button>}
+                {hasData && <button title="Fermer mes données" aria-label="Fermer mes données" onClick={disconnectFile} style={{ width: 36, height: 36, borderRadius: 8, border: `1px solid ${AMB}40`, background: `${AMB}10`, color: AMB, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><LogOut size={15} /></button>}
                 <button title="Changer de thème" aria-label="Changer de thème" onClick={() => setMode(m => m === 'dark' ? 'light' : 'dark')} style={{ width: 36, height: 36, borderRadius: 8, border: `1px solid ${T.brd}`, background: 'transparent', color: T.t2, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{mode === 'dark' ? <Sun size={15} /> : <Moon size={15} />}</button>
             </header>
             <BottomNav page={page} setPage={setPage} setSelP={setSelP} setModal={setModal} />
@@ -819,7 +830,7 @@ function TopBar({ page, selP, setPage, setSelP, mode, setMode, setModal, expJSON
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <button onClick={expJSON} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '.36rem .75rem', borderRadius: 7, border: `1px solid ${T.brd}`, background: 'transparent', color: T.t2, cursor: 'pointer', fontSize: '.72rem', minHeight: 36 }}><Download size={11} />Export</button>
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '.36rem .75rem', borderRadius: 7, border: `1px solid ${T.brd}`, background: 'transparent', color: T.t2, cursor: 'pointer', fontSize: '.72rem', minHeight: 36 }}><Upload size={11} />Import<input type="file" accept=".json" style={{ display: 'none' }} onChange={impJSON} /></label>
-                {dataMode === 'file' && <button onClick={disconnectFile} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '.36rem .75rem', borderRadius: 7, border: `1px solid ${AMB}40`, background: `${AMB}10`, color: AMB, cursor: 'pointer', fontSize: '.72rem', minHeight: 36 }}><LogOut size={11} />Déconnecter</button>}
+                {hasData && <button title="Fermer mes données et revenir à l'accueil" onClick={disconnectFile} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '.36rem .75rem', borderRadius: 7, border: `1px solid ${AMB}40`, background: `${AMB}10`, color: AMB, cursor: 'pointer', fontSize: '.72rem', minHeight: 36 }}><LogOut size={11} />Déconnexion</button>}
                 <Btn primary onClick={() => setModal({ type: 'saisie' })} style={{ padding: '.36rem .8rem' }}><Plus size={11} />Saisie</Btn>
                 <button title="Changer de thème" aria-label="Changer de thème" onClick={() => setMode(m => m === 'dark' ? 'light' : 'dark')} style={{ width: 34, height: 34, borderRadius: 8, border: `1px solid ${T.brd}`, background: 'transparent', color: T.t2, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{mode === 'dark' ? <Sun size={14} /> : <Moon size={14} />}</button>
             </div>
