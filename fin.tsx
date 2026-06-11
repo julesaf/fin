@@ -722,6 +722,42 @@ function WelcomeModal({ onEmpty, canClose, onClose, mode, setMode }) {
     const T = useT(); const { isMobile } = useBreakpoint();
     const revealStyle = { opacity: 1, transform: 'translateY(0)', transition: 'all .8s cubic-bezier(.2,.8,.2,1)' };
     const openApp = () => canClose ? onClose() : onEmpty();
+    const landingRef = useRef(null);
+    const demoPreviewRef = useRef(null);
+    const touchYRef = useRef(null);
+    const routeScrollToDemo = deltaY => {
+        const demo = demoPreviewRef.current;
+        if (!demo || !deltaY || Math.abs(deltaY) < 1) return false;
+        const max = demo.scrollHeight - demo.clientHeight;
+        if (max <= 2) return false;
+        const rect = demo.getBoundingClientRect();
+        const vh = typeof window !== 'undefined' ? window.innerHeight : 900;
+        const demoIsFocusZone = rect.top < vh * 0.72 && rect.bottom > vh * 0.28;
+        if (!demoIsFocusZone) return false;
+        const canScrollDown = deltaY > 0 && demo.scrollTop < max - 1;
+        const canScrollUp = deltaY < 0 && demo.scrollTop > 1;
+        if (!canScrollDown && !canScrollUp) return false;
+        const before = demo.scrollTop;
+        demo.scrollTop = Math.max(0, Math.min(max, before + deltaY));
+        return demo.scrollTop !== before;
+    };
+    const onLandingWheel = e => {
+        if (routeScrollToDemo(e.deltaY)) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    };
+    const onLandingTouchStart = e => { touchYRef.current = e.touches?.[0]?.clientY ?? null; };
+    const onLandingTouchMove = e => {
+        const y = e.touches?.[0]?.clientY;
+        if (touchYRef.current == null || y == null) return;
+        const deltaY = touchYRef.current - y;
+        if (routeScrollToDemo(deltaY)) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        touchYRef.current = y;
+    };
     const L = {
         bg: T.dark ? '#0A0A0E' : '#F7F6FC',
         surface: T.dark ? '#15151C' : '#FFFFFF',
@@ -744,7 +780,7 @@ function WelcomeModal({ onEmpty, canClose, onClose, mode, setMode }) {
         { cls: 'large', Icon: Layers, title: 'Séparez les apports des gains', text: 'Voir son solde augmenter c\'est bien, mais InvestTrack distingue clairement ce que vous avez versé de ce que vos placements ont généré.' },
     ];
     return (
-        <div style={{ position: 'fixed', inset: 0, width: '100vw', zIndex: 220, background: L.bg, color: L.text, overflowY: 'auto', overflowX: 'hidden', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', lineHeight: 1.6 }}>
+        <div ref={landingRef} onWheel={onLandingWheel} onTouchStart={onLandingTouchStart} onTouchMove={onLandingTouchMove} style={{ position: 'fixed', inset: 0, width: '100vw', zIndex: 220, background: L.bg, color: L.text, overflowY: 'auto', overflowX: 'hidden', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', lineHeight: 1.6 }}>
             <style>{`
                 .landing-scrollbar{scrollbar-width:thin;scrollbar-color:${ACC}55 transparent}
                 .landing-scrollbar::-webkit-scrollbar{width:8px;height:8px}.landing-scrollbar::-webkit-scrollbar-thumb{background:${ACC}55;border-radius:99px}.landing-scrollbar::-webkit-scrollbar-track{background:transparent}
@@ -777,7 +813,7 @@ function WelcomeModal({ onEmpty, canClose, onClose, mode, setMode }) {
                         <div style={{ display: 'flex', gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#FF5F56' }} /><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#FFBD2E' }} /><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#27C93F' }} /></div>
                         <span style={{ color: L.textFaint, fontSize: '.72rem', fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase' }}>Démo interactive</span>
                     </div>
-                    <div className="landing-app-preview landing-scrollbar" style={{ maxHeight: 'min(82vh,920px)', overflow: 'auto', WebkitOverflowScrolling: 'touch' }}><LandingDemoMockup /></div>
+                    <div ref={demoPreviewRef} className="landing-app-preview landing-scrollbar" style={{ maxHeight: 'min(82vh,920px)', overflow: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}><LandingDemoMockup /></div>
                 </div>
             </div>
 
