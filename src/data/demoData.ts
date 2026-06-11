@@ -1,5 +1,5 @@
-import { ACCENT_COLOR, GAIN_COLOR, WARNING_COLOR } from './appConstants';
-import type { Pocket, Transaction, Valuation } from './portfolioAnalytics';
+import { ACCENT_COLOR, GAIN_COLOR, WARNING_COLOR } from '../config/appConstants';
+import type { Pocket, Transaction, Valuation } from '../domain/portfolioAnalytics';
 
 export const DEMO_POCKETS: Pocket[] = [
     { id: 'p1', nom: 'PEA', couleur: ACCENT_COLOR, createdAt: '2023-01-01' },

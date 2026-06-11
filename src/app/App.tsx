@@ -11,8 +11,8 @@ import {
     TRANSACTION_TYPES as TX_IN,
     getTransactionColor as txC,
     getTransactionLabel as txL,
-} from "./appConstants";
-import { DEMO_POCKETS as D_P, DEMO_TRANSACTIONS as D_T, DEMO_VALUATIONS as D_V } from "./demoData";
+} from "../config/appConstants";
+import { DEMO_POCKETS as D_P, DEMO_TRANSACTIONS as D_T, DEMO_VALUATIONS as D_V } from "../data/demoData";
 import {
     CURRENT_YEAR as CY,
     TODAY,
@@ -21,7 +21,7 @@ import {
     formatPercent as fPctS,
     formatSignedEuro as fEURS,
     getGainColor as gc,
-} from "./formatters";
+} from "../utils/formatters";
 import {
     buildPocketHistory,
     buildPortfolioHistory,
@@ -29,8 +29,8 @@ import {
     getAnnualPerformanceRows,
     getPocketMetrics,
     getPortfolioMetrics,
-} from "./portfolioAnalytics";
-import { createDarkTheme, createLightTheme } from "./theme";
+} from "../domain/portfolioAnalytics";
+import { createDarkTheme, createLightTheme } from "../theme/theme";
 
 const TC = createContext(createDarkTheme());
 const useT = () => useContext(TC);
@@ -436,8 +436,8 @@ function AnnualTable({ pid, txs, vals }) {
 
 // ── Form helpers ──
 function Lbl({ ch }) { const T = useT(); return <label style={{ fontSize: '.68rem', color: T.t2, display: 'block', marginBottom: 4, fontWeight: 500, letterSpacing: '.04em' }}>{ch}</label>; }
-function Inp({ style: xs, ...p }) { const T = useT(); return <input style={{ background: T.inp, border: `1px solid ${T.brd}`, borderRadius: 8, color: T.t1, padding: '.52rem .75rem', width: '100%', fontSize: '.84rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', fontVariantNumeric: 'tabular-nums', ...(xs || {}) }} {...p} />; }
-function Sel({ children, ...p }) { const T = useT(); return <select style={{ background: T.inp, border: `1px solid ${T.brd}`, borderRadius: 8, color: T.t1, padding: '.52rem .75rem', width: '100%', fontSize: '.84rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} {...p}>{children}</select>; }
+function Inp({ style: xs, ...p }) { const T = useT(); return <input style={{ background: T.inp, border: `1px solid ${T.brd}`, borderRadius: 8, color: T.t1, padding: '.52rem .75rem', width: '100%', fontSize: '16px', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', fontVariantNumeric: 'tabular-nums', ...(xs || {}) }} {...p} />; }
+function Sel({ children, ...p }) { const T = useT(); return <select style={{ background: T.inp, border: `1px solid ${T.brd}`, borderRadius: 8, color: T.t1, padding: '.52rem .75rem', width: '100%', fontSize: '16px', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} {...p}>{children}</select>; }
 function CatInp({ value, onChange, categories, placeholder }) {
     const T = useT();
     const choose = c => onChange({ target: { value: c } });
@@ -537,10 +537,11 @@ function ModalPoche({ onAdd, onClose, count, categories = [] }) {
     const [nom, setNom] = useState(''); const [col, setCol] = useState(PCOLS[count % PCOLS.length]);
     const [categorie, setCategorie] = useState('');
     const T = useT();
+    const { isMobile } = useBreakpoint();
     return (
         <Sheet title="Nouvelle poche" onClose={onClose}>
             <div style={{ display: 'grid', gap: '.85rem' }}>
-                <div><Lbl ch="Nom" /><Inp value={nom} onChange={e => setNom(e.target.value)} placeholder="PEA, CTO, Livret A…" autoFocus /></div>
+                <div><Lbl ch="Nom" /><Inp value={nom} onChange={e => setNom(e.target.value)} placeholder="PEA, CTO, Livret A…" autoFocus={!isMobile} /></div>
                 <div><Lbl ch="Catégorie" /><CatInp value={categorie} onChange={e => setCategorie(e.target.value)} categories={categories} placeholder="Nouvelle catégorie…" /></div>
                 <div><Lbl ch="Couleur" />
                     <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap', marginTop: 5 }}>
@@ -557,6 +558,7 @@ function ModalEditPoche({ poche, categories = [], onSave, onClose }) {
     const [categorie, setCategorie] = useState(poche.categorie || '');
     const [couleur, setCouleur] = useState(poche.couleur || PCOLS[0]);
     const T = useT();
+    const { isMobile } = useBreakpoint();
     const ok = nom.trim().length > 0;
     return (
         <Sheet title="Modifier la poche" onClose={onClose}>
@@ -568,7 +570,7 @@ function ModalEditPoche({ poche, categories = [], onSave, onClose }) {
                         <div style={{ color: T.t3, fontSize: '.66rem', marginTop: 2 }}>{categorie.trim() || 'Sans catégorie'}</div>
                     </div>
                 </div>
-                <div><Lbl ch="Nom" /><Inp value={nom} onChange={e => setNom(e.target.value)} autoFocus /></div>
+                <div><Lbl ch="Nom" /><Inp value={nom} onChange={e => setNom(e.target.value)} autoFocus={!isMobile} /></div>
                 <div><Lbl ch="Catégorie" /><CatInp value={categorie} onChange={e => setCategorie(e.target.value)} categories={categories} placeholder="Nouvelle catégorie…" /></div>
                 <div><Lbl ch="Couleur" />
                     <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap', marginTop: 5 }}>

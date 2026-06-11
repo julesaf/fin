@@ -4,7 +4,7 @@ import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
 import App from "./App";
 
-import "./style.css";
+import "../styles/style.css";
 
 window.storage = {
     async get(key: string) {

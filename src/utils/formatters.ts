@@ -1,4 +1,4 @@
-import { GAIN_COLOR, LOSS_COLOR } from './appConstants';
+import { GAIN_COLOR, LOSS_COLOR } from '../config/appConstants';
 
 export const TODAY = new Date().toISOString().split('T')[0];
 export const CURRENT_YEAR = new Date().getFullYear();
