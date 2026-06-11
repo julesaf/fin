@@ -14,6 +14,9 @@ window.storage = {
     async set(key: string, value: string) {
         localStorage.setItem(key, value);
     },
+    async remove(key: string) {
+        localStorage.removeItem(key);
+    },
 };
 
 createRoot(document.getElementById("root")!).render(

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, createContext, useContext } from "react";
 import { ComposedChart, Area, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip as RT, ResponsiveContainer, Legend, ReferenceArea, ReferenceLine } from "recharts";
-import { Plus, Download, Upload, X, Trash2, ArrowLeft, TrendingUp, TrendingDown, Sun, Moon, ArrowUpRight, ArrowDownRight, LayoutDashboard, Layers, Pencil, Check } from "lucide-react";
+import { Plus, Download, Upload, X, Trash2, ArrowLeft, TrendingUp, TrendingDown, Sun, Moon, ArrowUpRight, ArrowDownRight, LayoutDashboard, Layers, Pencil, Check, LogOut } from "lucide-react";
 
 const ACC = '#E8364A';
 const VALC = '#38BDF8';
@@ -718,26 +718,44 @@ function ConfirmDel({ msg, onOk, onCancel }) {
     );
 }
 function WelcomeModal({ onDemo, onEmpty, onImport }) {
-    const T = useT(); const fileRef = useRef(null);
-    const points = ['Suivez vos poches, apports, retraits et valorisations.', 'Analysez performance, XIRR, Dietz et allocation.', 'Importez ou exportez une sauvegarde JSON locale.'];
+    const T = useT(); const { isMobile } = useBreakpoint(); const fileRef = useRef(null);
+    const cards = [
+        { title: 'Poches', text: 'Capital, flux et catégories restent lisibles dès le premier écran.', color: ACC },
+        { title: 'Performance', text: 'XIRR, Dietz, latent et réalisé sont recalculés à chaque saisie.', color: VALC },
+        { title: 'Sauvegarde', text: 'Import et export JSON, sans compte ni serveur.', color: GRN },
+    ];
     return (
-        <Sheet title="Bienvenue dans InvestTrack" onClose={onDemo}>
-            <div style={{ display: 'grid', gap: '.95rem' }}>
-                <div style={{ borderRadius: 12, background: T.s2, border: `1px solid ${T.brd}`, padding: '.9rem 1rem' }}>
-                    <div style={{ fontSize: '.82rem', color: T.t1, fontWeight: 700, marginBottom: 6 }}>Choisissez comment démarrer</div>
-                    <div style={{ fontSize: '.76rem', color: T.t2, lineHeight: 1.7 }}>Vos données restent dans le stockage local du navigateur. La démo sert uniquement à explorer l'application.</div>
-                </div>
-                <div style={{ display: 'grid', gap: '.45rem' }}>
-                    {points.map((p, i) => <div key={p} style={{ display: 'flex', gap: 8, color: T.t2, fontSize: '.75rem', lineHeight: 1.55 }}><span style={{ width: 18, height: 18, borderRadius: 6, background: `${ACC}18`, color: ACC, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, flexShrink: 0, fontSize: '.66rem' }}>{i + 1}</span><span>{p}</span></div>)}
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 7 }}>
-                    <Btn primary onClick={onDemo} style={{ justifyContent: 'center' }}>Explorer la démo</Btn>
-                    <Btn onClick={() => fileRef.current?.click()} style={{ justifyContent: 'center' }}><Upload size={12} />Importer un fichier JSON</Btn>
-                    <Btn ghost onClick={onEmpty} style={{ justifyContent: 'center' }}>Commencer vierge</Btn>
-                    <input ref={fileRef} type="file" accept=".json" style={{ display: 'none' }} onChange={onImport} />
+        <div style={{ position: 'fixed', inset: 0, zIndex: 220, background: T.dark ? '#08080C' : '#F7F6FC', color: T.t1, overflowY: 'auto', fontFamily: 'system-ui,-apple-system,sans-serif' }}>
+            <div style={{ minHeight: '100vh', display: 'grid', alignItems: 'center', padding: isMobile ? '1.25rem' : '2rem', boxSizing: 'border-box', background: T.dark ? `linear-gradient(135deg,${ACC}18 0%,transparent 34%),linear-gradient(315deg,${VALC}12 0%,transparent 30%)` : `linear-gradient(135deg,${ACC}0D 0%,transparent 34%),linear-gradient(315deg,${VALC}14 0%,transparent 30%)` }}>
+                <div style={{ width: '100%', maxWidth: 1040, margin: '0 auto', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.08fr .92fr', gap: isMobile ? '1.1rem' : '1.5rem', alignItems: 'stretch' }}>
+                    <section style={{ borderRadius: 16, border: `1px solid ${T.brd2}`, background: T.dark ? 'rgba(21,21,28,.84)' : 'rgba(255,255,255,.86)', boxShadow: T.dark ? '0 24px 90px rgba(0,0,0,.55)' : '0 24px 80px rgba(30,30,70,.12)', padding: isMobile ? '1.25rem' : '1.65rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: isMobile ? 'auto' : 440 }}>
+                        <div>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '.3rem .5rem', borderRadius: 10, background: `${ACC}14`, border: `1px solid ${ACC}2E`, color: ACC, fontSize: '.68rem', fontWeight: 800, marginBottom: '1.1rem' }}><span style={{ width: 20, height: 20, borderRadius: 7, background: ACC, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '.58rem' }}>IT</span>InvestTrack</div>
+                            <h1 style={{ margin: 0, fontSize: isMobile ? '2.15rem' : '3.35rem', lineHeight: .98, letterSpacing: 0, fontWeight: 900 }}>Votre portefeuille, propre dès le départ.</h1>
+                            <p style={{ margin: '1rem 0 0', color: T.t2, fontSize: isMobile ? '.86rem' : '.95rem', lineHeight: 1.75, maxWidth: 560 }}>Choisissez une démo, une sauvegarde JSON ou un espace vide. Rien n'est écrit dans le navigateur tant que vous n'avez pas choisi.</p>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,1fr)', gap: 8, marginTop: '1.4rem' }}>
+                            {cards.map(c => <div key={c.title} style={{ borderRadius: 10, background: T.s2, border: `1px solid ${T.brd}`, padding: '.8rem' }}><div style={{ width: 26, height: 3, borderRadius: 99, background: c.color, marginBottom: '.55rem' }} /><div style={{ color: T.t1, fontWeight: 800, fontSize: '.78rem', marginBottom: 4 }}>{c.title}</div><div style={{ color: T.t2, fontSize: '.7rem', lineHeight: 1.55 }}>{c.text}</div></div>)}
+                        </div>
+                    </section>
+                    <aside style={{ borderRadius: 16, border: `1px solid ${T.brd}`, background: T.s1, padding: isMobile ? '1.1rem' : '1.35rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxShadow: T.dark ? '0 18px 70px rgba(0,0,0,.45)' : '0 18px 60px rgba(30,30,70,.1)' }}>
+                        <div>
+                            <div style={{ fontSize: '.62rem', color: T.t3, textTransform: 'uppercase', letterSpacing: '.14em', fontWeight: 800, marginBottom: '.8rem' }}>Démarrage</div>
+                            <div style={{ display: 'grid', gap: 8 }}>
+                                <Btn primary onClick={onDemo} style={{ justifyContent: 'space-between', minHeight: 48, fontSize: '.82rem' }}>Explorer la démo <ArrowUpRight size={15} /></Btn>
+                                <Btn onClick={() => fileRef.current?.click()} style={{ justifyContent: 'space-between', minHeight: 48, fontSize: '.82rem' }}>Importer un fichier JSON <Upload size={15} /></Btn>
+                                <Btn ghost onClick={onEmpty} style={{ justifyContent: 'space-between', minHeight: 48, fontSize: '.82rem' }}>Commencer vierge <Plus size={15} /></Btn>
+                                <input ref={fileRef} type="file" accept=".json" style={{ display: 'none' }} onChange={onImport} />
+                            </div>
+                        </div>
+                        <div style={{ marginTop: '1.2rem', borderRadius: 12, border: `1px solid ${T.brd}`, background: T.s2, padding: '.85rem' }}>
+                            <div style={{ color: T.t1, fontWeight: 800, fontSize: '.74rem', marginBottom: 5 }}>Stockage local</div>
+                            <div style={{ color: T.t2, fontSize: '.7rem', lineHeight: 1.6 }}>La déconnexion d'un fichier importé efface uniquement la copie locale utilisée par l'application.</div>
+                        </div>
+                    </aside>
                 </div>
             </div>
-        </Sheet>
+        </div>
     );
 }
 
@@ -767,7 +785,7 @@ function BottomNav({ page, setPage, setSelP, setModal }) {
 }
 
 // ── Top bar ──
-function TopBar({ page, selP, setPage, setSelP, mode, setMode, setModal, expJSON, impJSON }) {
+function TopBar({ page, selP, setPage, setSelP, mode, setMode, setModal, expJSON, impJSON, dataMode, disconnectFile }) {
     const T = useT(); const { isMobile } = useBreakpoint();
     const activeTab = selP ? '_' : page;
     const logo = (
@@ -783,6 +801,7 @@ function TopBar({ page, selP, setPage, setSelP, mode, setMode, setModal, expJSON
                 <div style={{ flex: 1 }} />
                 <button title="Exporter" aria-label="Exporter" onClick={expJSON} style={{ width: 36, height: 36, borderRadius: 8, border: `1px solid ${T.brd}`, background: 'transparent', color: T.t2, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Download size={15} /></button>
                 <label title="Importer" aria-label="Importer" style={{ width: 36, height: 36, borderRadius: 8, border: `1px solid ${T.brd}`, background: 'transparent', color: T.t2, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Upload size={15} /><input type="file" accept=".json" style={{ display: 'none' }} onChange={impJSON} /></label>
+                {dataMode === 'file' && <button title="Déconnecter le fichier" aria-label="Déconnecter le fichier" onClick={disconnectFile} style={{ width: 36, height: 36, borderRadius: 8, border: `1px solid ${AMB}40`, background: `${AMB}10`, color: AMB, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><LogOut size={15} /></button>}
                 <button title="Changer de thème" aria-label="Changer de thème" onClick={() => setMode(m => m === 'dark' ? 'light' : 'dark')} style={{ width: 36, height: 36, borderRadius: 8, border: `1px solid ${T.brd}`, background: 'transparent', color: T.t2, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{mode === 'dark' ? <Sun size={15} /> : <Moon size={15} />}</button>
             </header>
             <BottomNav page={page} setPage={setPage} setSelP={setSelP} setModal={setModal} />
@@ -800,6 +819,7 @@ function TopBar({ page, selP, setPage, setSelP, mode, setMode, setModal, expJSON
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <button onClick={expJSON} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '.36rem .75rem', borderRadius: 7, border: `1px solid ${T.brd}`, background: 'transparent', color: T.t2, cursor: 'pointer', fontSize: '.72rem', minHeight: 36 }}><Download size={11} />Export</button>
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '.36rem .75rem', borderRadius: 7, border: `1px solid ${T.brd}`, background: 'transparent', color: T.t2, cursor: 'pointer', fontSize: '.72rem', minHeight: 36 }}><Upload size={11} />Import<input type="file" accept=".json" style={{ display: 'none' }} onChange={impJSON} /></label>
+                {dataMode === 'file' && <button onClick={disconnectFile} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '.36rem .75rem', borderRadius: 7, border: `1px solid ${AMB}40`, background: `${AMB}10`, color: AMB, cursor: 'pointer', fontSize: '.72rem', minHeight: 36 }}><LogOut size={11} />Déconnecter</button>}
                 <Btn primary onClick={() => setModal({ type: 'saisie' })} style={{ padding: '.36rem .8rem' }}><Plus size={11} />Saisie</Btn>
                 <button title="Changer de thème" aria-label="Changer de thème" onClick={() => setMode(m => m === 'dark' ? 'light' : 'dark')} style={{ width: 34, height: 34, borderRadius: 8, border: `1px solid ${T.brd}`, background: 'transparent', color: T.t2, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{mode === 'dark' ? <Sun size={14} /> : <Moon size={14} />}</button>
             </div>
@@ -1295,7 +1315,7 @@ export default function App() {
                     const nextPs = Array.isArray(d.p) ? d.p : Array.isArray(d.poches) ? d.poches : [];
                     const nextTs = Array.isArray(d.t) ? d.t : Array.isArray(d.transactions) ? d.transactions : [];
                     const nextVs = Array.isArray(d.v) ? d.v : Array.isArray(d.valorisations) ? d.valorisations : [];
-                    setPs(nextPs); setTs(nextTs); setVs(nextVs); setDataMode('saved'); setShowWelcome(false);
+                    setPs(nextPs); setTs(nextTs); setVs(nextVs); setDataMode(d.source === 'file' ? 'file' : 'saved'); setShowWelcome(false);
                 } else {
                     setPs([]); setTs([]); setVs([]); setDataMode('empty'); setShowWelcome(true);
                 }
@@ -1304,7 +1324,7 @@ export default function App() {
             setReady(true);
         })();
     }, []);
-    useEffect(() => { if (!ready || showWelcome || dataMode === 'demo') return; window.storage.set('inv_v9', JSON.stringify({ p: ps, t: ts, v: vs })).catch(() => { }); }, [ps, ts, vs, ready, showWelcome, dataMode]);
+    useEffect(() => { if (!ready || showWelcome || dataMode === 'demo') return; window.storage.set('inv_v9', JSON.stringify({ p: ps, t: ts, v: vs, source: dataMode === 'file' ? 'file' : 'saved' })).catch(() => { }); }, [ps, ts, vs, ready, showWelcome, dataMode]);
 
     const pm = useMemo(() => ps.map(p => ({ ...p, ...getPocheMetrics(p.id, ts, vs) })), [ps, ts, vs]);
     const categories = useMemo(() => [...new Set(ps.map(p => p.categorie?.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr-FR')), [ps]);
@@ -1315,10 +1335,18 @@ export default function App() {
         return { tv, tc, tg: pm.reduce((s, p) => s + p.gainLatent, 0), td, tf, latent, realised, xirr: xCFs.length >= 2 ? calcXIRR(xCFs) : null };
     }, [pm, ps, ts, vs]);
 
-    const markPersonal = () => { setDataMode('saved'); setShowWelcome(false); };
+    const markPersonal = () => { setDataMode(m => m === 'file' ? 'file' : 'saved'); setShowWelcome(false); };
     const loadDemo = () => { setPs(D_P); setTs(D_T); setVs(D_V); setDataMode('demo'); setShowWelcome(false); setSelP(null); setPage('dashboard'); };
     const startEmpty = () => { setPs([]); setTs([]); setVs([]); setDataMode('empty'); setShowWelcome(false); setSelP(null); setPage('dashboard'); };
     const useDemoAsBase = () => { setDataMode('saved'); setShowWelcome(false); };
+    const disconnectFile = async () => {
+        if (!window.confirm('Déconnecter ce fichier ? La copie locale sera effacée de ce navigateur.')) return;
+        try {
+            if (window.storage.remove) await window.storage.remove('inv_v9');
+            else window.localStorage?.removeItem('inv_v9');
+        } catch { }
+        setPs([]); setTs([]); setVs([]); setDataMode('empty'); setShowWelcome(true); setSelP(null); setPage('dashboard'); setModal(null);
+    };
 
     const handleSaisie = (pocheId, txData, valeur, date, note = '') => {
         markPersonal();
@@ -1350,7 +1378,7 @@ export default function App() {
                 const nextTs = Array.isArray(d.transactions) ? d.transactions : Array.isArray(d.t) ? d.t : null;
                 const nextVs = Array.isArray(d.valorisations) ? d.valorisations : Array.isArray(d.v) ? d.v : null;
                 if (!nextPs && !nextTs && !nextVs) throw new Error('Format non reconnu');
-                setPs(nextPs || []); setTs(nextTs || []); setVs(nextVs || []); setDataMode('saved'); setShowWelcome(false); setSelP(null); setPage('dashboard');
+                setPs(nextPs || []); setTs(nextTs || []); setVs(nextVs || []); setDataMode('file'); setShowWelcome(false); setSelP(null); setPage('dashboard');
             }
             catch (err) { alert('Fichier invalide : ' + err.message); }
         };
@@ -1375,7 +1403,7 @@ export default function App() {
     return (
         <TC.Provider value={T}>
             <div style={{ minHeight: '100vh', background: appBg, color: T.t1, fontFamily: 'system-ui,-apple-system,sans-serif', fontSize: '13px', lineHeight: 1.5 }}>
-                <TopBar page={page} selP={selP} setPage={setPage} setSelP={setSelP} mode={mode} setMode={setMode} setModal={setModal} expJSON={expJSON} impJSON={impJSON} />
+                <TopBar page={page} selP={selP} setPage={setPage} setSelP={setSelP} mode={mode} setMode={setMode} setModal={setModal} expJSON={expJSON} impJSON={impJSON} dataMode={dataMode} disconnectFile={disconnectFile} />
                 <main style={{ maxWidth: 1240, margin: '0 auto', padding: `1.1rem 1rem ${mainPb}` }}>
                     {detailPoche
                         ? <PocheDetail poche={detailPoche} txs={ts} vals={vs} onBack={() => setSelP(null)} onDelTx={delTx} onDelVal={delV} onDelPoche={delP} setModal={setModal} />
