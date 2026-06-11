@@ -627,14 +627,14 @@ function WelcomeModal({ onEmpty, canClose, onClose, mode, setMode }) {
     const rafRef = useRef(0);
     const [demoProgress, setDemoProgress] = useState(0);
     const [intro, setIntro] = useState(0);
+    const INTRO_PHASE = 0.1;
+    const EASING_FACTOR = 0.24;
+    const DEMO_SCROLL_GAIN = 1.32;
 
     useEffect(() => {
         const scroller = landingRef.current;
         const pin = pinRef.current;
         if (!scroller || !pin) return;
-
-        // Fraction of the intro phase (card unfolds) vs. the content-scroll phase.
-        const INTRO_PHASE = 0.16;
 
         const computeTarget = () => {
             const vh = scroller.clientHeight || window.innerHeight;
@@ -649,12 +649,12 @@ function WelcomeModal({ onEmpty, canClose, onClose, mode, setMode }) {
         const tick = () => {
             // Critically-damped easing toward the target -> smooth Apple-like glide.
             const diff = targetRef.current - easedRef.current;
-            easedRef.current += diff * 0.16;
+            easedRef.current += diff * EASING_FACTOR;
             if (Math.abs(diff) < 0.0005) easedRef.current = targetRef.current;
 
             const p = easedRef.current;
             const introP = Math.max(0, Math.min(1, p / INTRO_PHASE));
-            const scrollP = Math.max(0, Math.min(1, (p - INTRO_PHASE) / (1 - INTRO_PHASE)));
+            const scrollP = Math.max(0, Math.min(1, ((p - INTRO_PHASE) / (1 - INTRO_PHASE)) * DEMO_SCROLL_GAIN));
 
             setIntro(introP);
             setDemoProgress(scrollP);
@@ -683,11 +683,11 @@ function WelcomeModal({ onEmpty, canClose, onClose, mode, setMode }) {
         };
     }, []);
 
-    // Card unfold animation derived from the intro phase.
-    const cardScale = 0.86 + 0.14 * intro;
-    const cardTilt = (1 - intro) * 9;
-    const cardLift = (1 - intro) * 40;
-    const cardOpacity = 0.55 + 0.45 * intro;
+    // Card intro animation without zoom, only depth and lift.
+    const cardScale = 1;
+    const cardTilt = (1 - intro) * 6;
+    const cardLift = (1 - intro) * 28;
+    const cardOpacity = 0.72 + 0.28 * intro;
     const L = {
         bg: T.dark ? '#0A0A0E' : '#F7F6FC',
         surface: T.dark ? '#15151C' : '#FFFFFF',
@@ -714,7 +714,7 @@ function WelcomeModal({ onEmpty, canClose, onClose, mode, setMode }) {
             <style>{`
                 .landing-scrollbar{scrollbar-width:thin;scrollbar-color:${ACC}55 transparent}
                 .landing-scrollbar::-webkit-scrollbar{width:8px;height:8px}.landing-scrollbar::-webkit-scrollbar-thumb{background:${ACC}55;border-radius:99px}.landing-scrollbar::-webkit-scrollbar-track{background:transparent}
-                .landing-demo-pin{position:relative;height:340vh}.landing-demo-sticky{position:sticky;top:0;height:100vh;display:flex;align-items:center;justify-content:center;padding:0 1rem;box-sizing:border-box}.landing-demo-shell{width:100%;max-width:1180px;perspective:1400px}
+                .landing-demo-pin{position:relative;height:250vh}.landing-demo-sticky{position:sticky;top:0;height:100vh;display:flex;align-items:center;justify-content:center;padding:0 1rem;box-sizing:border-box}.landing-demo-shell{width:100%;max-width:1180px;perspective:1400px}
                 @media (max-width: 900px){.landing-demo-pin{height:auto;margin-bottom:3.5rem}.landing-demo-sticky{position:relative;top:auto;height:auto;padding:0 .75rem}.landing-demo-shell{max-width:calc(100vw - 1.5rem)!important}.landing-demo-card{transform:none!important;opacity:1!important;border-radius:16px!important}.landing-app-preview{max-height:78vh!important}.landing-section{padding-top:4rem!important;padding-bottom:4rem!important}.landing-trust-grid{gap:1rem!important}.landing-bento{grid-template-columns:1fr!important}.landing-feature-large{grid-column:auto!important}.landing-feature-card{min-height:220px!important;padding:2rem 1.5rem!important}.landing-feature-card p{max-width:100%!important}.landing-demo-side{display:none!important}}
                 @media (max-width: 640px){.landing-hero{padding:3.25rem .9rem 2rem!important}.landing-hero h1{font-size:clamp(2.35rem,14vw,3.55rem)!important;line-height:1.02!important}.landing-hero p{font-size:1rem!important}.landing-nav{padding:.85rem 1rem!important}.landing-open-label{display:none!important}.landing-app-preview{max-height:72vh!important}.landing-demo-windowbar{padding:.7rem!important}.landing-section{padding-left:.9rem!important;padding-right:.9rem!important}.landing-footer{justify-content:center!important;text-align:center!important}}
                 @media (max-width: 430px){.landing-brand-text{display:none!important}.landing-app-preview{max-height:68vh!important}.landing-demo-shell{padding:0 .6rem!important;max-width:100vw!important}.landing-feature-card{min-height:200px!important}}
