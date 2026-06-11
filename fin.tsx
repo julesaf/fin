@@ -706,99 +706,38 @@ function ModalEditPoche({ poche, categories = [], onSave, onClose }) {
         </Sheet>
     );
 }
-function ConfirmDel({ msg, onOk, onCancel }) {
+function ConfirmDel({ msg, onOk, onCancel, title = 'Confirmer', okLabel = 'Supprimer', danger = true }) {
     return (
-        <Sheet title="Confirmer" onClose={onCancel}>
+        <Sheet title={title} onClose={onCancel}>
             <div style={{ textAlign: 'center', padding: '.5rem 0' }}>
                 <div style={{ width: 52, height: 52, borderRadius: '50%', background: `${LOSSC}15`, border: `1px solid ${LOSSC}30`, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto .9rem', fontSize: '1.3rem' }}>⚠️</div>
                 <p style={{ fontSize: '.8rem', lineHeight: 1.75, marginBottom: '1.4rem' }}>{msg}</p>
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}><Btn ghost onClick={onCancel}>Annuler</Btn><Btn danger onClick={onOk}>Supprimer</Btn></div>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}><Btn ghost onClick={onCancel}>Annuler</Btn><Btn danger={danger} primary={!danger} onClick={onOk}>{okLabel}</Btn></div>
             </div>
         </Sheet>
     );
 }
 function LandingDemoMockup() {
-    const T = useT();
-    const { isMobile } = useBreakpoint();
-    const ink = T.dark ? '#EEEEFF' : '#0A0A14';
-    const muted = T.dark ? '#8080A8' : '#606080';
-    const panel = T.dark ? 'rgba(255,255,255,0.025)' : 'rgba(255,255,255,0.8)';
-    const panel2 = T.dark ? '#15151C' : '#FFFFFF';
-    const border = T.dark ? 'rgba(255,255,255,0.08)' : 'rgba(10,10,20,0.08)';
-    const grid = T.dark ? 'rgba(255,255,255,.06)' : 'rgba(10,10,20,.07)';
-    const demoPm = [
-        { id: 'pea', nom: 'PEA', couleur: ACC, capital: 16500, valActu: 18420, lastVal: 'Avr. 2026' },
-        { id: 'crypto', nom: 'Crypto', couleur: AMB, capital: 7200, valActu: 8120, lastVal: 'Avr. 2026' },
-        { id: 'immo', nom: 'Immobilier', couleur: GRN, capital: 22000, valActu: 23850, lastVal: 'Mars 2026' },
-    ].map(p => ({ ...p, perf: p.valActu - p.capital, perfPct: p.capital > 0 ? (p.valActu - p.capital) / p.capital : null }));
-    const chart = [
-        { date: '2024-01', value: 14100, capital: 13500 },
-        { date: '2024-04', value: 18900, capital: 18500 },
-        { date: '2024-08', value: 24700, capital: 24000 },
-        { date: '2024-12', value: 31200, capital: 30000 },
-        { date: '2025-04', value: 36500, capital: 35200 },
-        { date: '2025-08', value: 42100, capital: 40000 },
-        { date: '2025-12', value: 47300, capital: 43800 },
-        { date: '2026-04', value: 50390, capital: 45700 },
-    ].map(p => ({ ...p, perf: p.value - p.capital, pct: p.capital > 0 ? (p.value - p.capital) / p.capital : null }));
-    const totalValue = demoPm.reduce((s, p) => s + p.valActu, 0);
-    const totalCapital = demoPm.reduce((s, p) => s + p.capital, 0);
-    const totalGain = totalValue - totalCapital;
-    const gainPct = totalCapital > 0 ? totalGain / totalCapital : null;
+    const T = useT(); const { isMobile } = useBreakpoint();
+    const ps = D_P, ts = D_T, vs = D_V;
+    const pm = useMemo(() => ps.map(p => ({ ...p, ...getPocheMetrics(p.id, ts, vs) })), [ps, ts, vs]);
+    const gm = useMemo(() => {
+        const tv = pm.reduce((s, p) => s + p.valActu, 0), tc = pm.reduce((s, p) => s + p.capital, 0), td = pm.reduce((s, p) => s + p.dividendes, 0), tf = pm.reduce((s, p) => s + p.frais, 0), latent = pm.reduce((s, p) => s + p.gainNonRealise, 0), realised = pm.reduce((s, p) => s + p.gainRealise, 0);
+        const xCFs = ts.filter(t => ['apport', 'retrait', 'dividende', 'frais'].includes(t.type)).map(t => ({ date: t.timestamp, a: (t.type === 'apport' || t.type === 'frais') ? -t.montant : t.montant }));
+        ps.forEach(p => { const pv = vs.filter(v => v.pocheId === p.id).sort((a, b) => a.date.localeCompare(b.date)); if (pv.length && pv[pv.length - 1].valeur > 0) xCFs.push({ date: pv[pv.length - 1].date, a: pv[pv.length - 1].valeur }); });
+        return { tv, tc, tg: pm.reduce((s, p) => s + p.gainLatent, 0), td, tf, latent, realised, xirr: xCFs.length >= 2 ? calcXIRR(xCFs) : null };
+    }, [pm, ps, ts, vs]);
+    const noop = () => { };
     return (
-        <div style={{ padding: 'clamp(1rem,3vw,2rem)', background: T.dark ? 'radial-gradient(circle at top, rgba(255,255,255,0.035) 0%, transparent 70%)' : 'radial-gradient(circle at top, rgba(232,54,74,0.06) 0%, transparent 70%)', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0,1.24fr) minmax(230px,.76fr)', gap: 18, minHeight: isMobile ? 0 : 430 }}>
-            <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 15 }}>
-                <div>
-                    <div style={{ fontSize: '.68rem', color: muted, textTransform: 'uppercase', letterSpacing: '.1em', fontWeight: 700, marginBottom: 6 }}>Portefeuille total</div>
-                    <div style={{ fontSize: 'clamp(2rem,5vw,3.5rem)', fontWeight: 850, lineHeight: 1, letterSpacing: '-.04em', color: ink }}>{fEUR(totalValue)}</div>
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 9 }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: panel, color: ink, padding: '6px 12px', borderRadius: 8, fontSize: '.78rem', border: `1px solid ${border}` }}>Performance <strong style={{ color: GRN }}>{fPctS(gainPct)}</strong></span>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: panel, color: ink, padding: '6px 12px', borderRadius: 8, fontSize: '.78rem', border: `1px solid ${border}` }}>Capital net <strong>{fEUR(totalCapital)}</strong></span>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: `${GRN}12`, color: GRN, padding: '6px 12px', borderRadius: 8, fontSize: '.78rem', border: `1px solid ${GRN}2E` }}>Gain {fEURS(totalGain)}</span>
-                </div>
-                <div style={{ flex: 1, minHeight: 205, borderRadius: 14, border: `1px solid ${VALC}2E`, background: T.dark ? 'linear-gradient(180deg, rgba(56,189,248,0.08) 0%, rgba(56,189,248,0.01) 100%)' : 'linear-gradient(180deg, rgba(56,189,248,0.12) 0%, rgba(56,189,248,0.02) 100%)', overflow: 'hidden' }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                        <ComposedChart data={chart} margin={{ top: 22, right: 12, left: -12, bottom: 0 }}>
-                            <defs><linearGradient id="landingDemoFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={VALC} stopOpacity={0.28} /><stop offset="100%" stopColor={VALC} stopOpacity={0.02} /></linearGradient></defs>
-                            <CartesianGrid stroke={grid} vertical={false} />
-                            <XAxis dataKey="date" tick={{ fill: muted, fontSize: 10 }} axisLine={false} tickLine={false} minTickGap={16} />
-                            <YAxis hide domain={[0, 'dataMax + 2500']} />
-                            <RT contentStyle={{ background: panel2, border: `1px solid ${border}`, borderRadius: 10, color: ink, fontSize: '.75rem' }} formatter={v => fEUR(v)} />
-                            <Area type="monotone" dataKey="value" fill="url(#landingDemoFill)" stroke={VALC} strokeWidth={2.4} dot={false} />
-                            <Line type="monotone" dataKey="capital" stroke={T.dark ? '#F8FAFC' : '#111827'} strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
-                        </ComposedChart>
-                    </ResponsiveContainer>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,1fr)', gap: 10 }}>
-                    {[
-                        ['Apports cumulés', fEUR(48200)],
-                        ['Retraits cumulés', fEUR(2500)],
-                        ['Dernière valorisation', 'Avr. 2026'],
-                    ].map(([label, value]) => <div key={label} style={{ border: `1px solid ${border}`, background: panel, borderRadius: 12, padding: '.75rem' }}><div style={{ color: muted, fontSize: '.63rem', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 800 }}>{label}</div><div style={{ color: ink, fontSize: '.94rem', fontWeight: 850, marginTop: 3 }}>{value}</div></div>)}
-                </div>
+        <div style={{ background: T.dark ? 'radial-gradient(ellipse 60% 50% at 8% 92%,rgba(232,54,74,.07) 0%,transparent 50%),#0A0A0E' : T.bg, color: T.t1, fontFamily: 'system-ui,-apple-system,sans-serif', fontSize: 13, lineHeight: 1.5, maxHeight: isMobile ? 620 : 760, overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '.55rem 1rem', borderBottom: `1px solid ${T.brd}`, background: T.dark ? 'rgba(10,10,14,.95)' : T.s1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}><div style={{ width: 28, height: 28, borderRadius: 8, background: `linear-gradient(135deg,${ACC},#FF6B6B)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.6rem', fontWeight: 900, color: '#fff', flexShrink: 0 }}>IT</div><strong style={{ color: T.t1, fontSize: '.82rem' }}>InvestTrack</strong></div>
+                {!isMobile && <div style={{ display: 'inline-flex', background: T.s2, borderRadius: 10, padding: 3, gap: 2, marginLeft: 8 }}><span style={{ padding: '.3rem 1rem', borderRadius: 8, background: T.s1, color: T.t1, fontSize: '.77rem', fontWeight: 700 }}>Dashboard</span><span style={{ padding: '.3rem 1rem', borderRadius: 8, color: T.t2, fontSize: '.77rem' }}>Poches</span></div>}
+                <div style={{ flex: 1 }} />
+                {!isMobile && <><Btn ghost style={{ padding: '.36rem .75rem' }}><Download size={11} />Export</Btn><Btn primary style={{ padding: '.36rem .8rem' }}><Plus size={11} />Saisie</Btn></>}
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
-                <div style={{ border: `1px solid ${border}`, borderRadius: 14, padding: 13, background: panel }}>
-                    <div style={{ color: muted, fontSize: '.66rem', textTransform: 'uppercase', letterSpacing: '.09em', fontWeight: 800, marginBottom: 10 }}>Répartition</div>
-                    <div style={{ display: 'grid', gap: 10 }}>
-                        {demoPm.map(p => (
-                            <div key={p.id}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, color: ink, fontSize: '.76rem', marginBottom: 5 }}><span>{p.nom}</span><strong>{Math.round((p.valActu / totalValue) * 100)}%</strong></div>
-                                <div style={{ height: 6, borderRadius: 99, background: T.dark ? 'rgba(255,255,255,.07)' : 'rgba(10,10,20,.08)', overflow: 'hidden' }}><div style={{ width: `${(p.valActu / totalValue) * 100}%`, height: '100%', background: p.couleur, borderRadius: 99 }} /></div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-                <div style={{ border: `1px solid ${border}`, borderRadius: 14, padding: 13, background: panel }}>
-                    <div style={{ color: muted, fontSize: '.66rem', textTransform: 'uppercase', letterSpacing: '.09em', fontWeight: 800, marginBottom: 10 }}>Performance par poche</div>
-                    <div style={{ display: 'grid', gap: 9 }}>
-                        {demoPm.map(p => <div key={p.id} style={{ display: 'grid', gap: 4 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, color: ink, fontSize: '.75rem' }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Dot c={p.couleur} sz={6} />{p.nom}</span><strong style={{ color: gc(p.perf) }}>{fPctS(p.perfPct)}</strong></div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, color: muted, fontSize: '.68rem' }}><span>{p.lastVal}</span><span>{fEURS(p.perf)}</span></div>
-                        </div>)}
-                    </div>
-                </div>
+            <div style={{ padding: isMobile ? '.75rem' : '1.1rem 1rem 2rem' }}>
+                <Dashboard pm={pm} gm={gm} ts={ts} vs={vs} ps={ps} setSelP={noop} setModal={noop} dataMode="landing" impJSON={noop} startEmpty={noop} useDemoAsBase={noop} />
             </div>
         </div>
     );
@@ -917,14 +856,14 @@ function TopBar({ page, selP, setPage, setSelP, mode, setMode, setModal, expJSON
     const activeTab = selP ? '_' : page;
     const hasData = dataMode === 'file' || dataMode === 'saved';
     const logo = (
-        <button onClick={onHome} title="Revenir à l'accueil" aria-label="Revenir à l'accueil" style={{ display: 'flex', alignItems: 'center', gap: 8, border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>
+        <button onClick={onHome} title="Revenir à l'accueil" aria-label="Revenir à l'accueil" style={{ display: 'flex', alignItems: 'center', gap: 8, border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, fontFamily: 'inherit', minWidth: 0, flexShrink: 0 }}>
             <div style={{ width: 28, height: 28, borderRadius: 8, background: `linear-gradient(135deg,${ACC},#FF6B6B)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.6rem', fontWeight: 900, color: '#fff', boxShadow: `0 0 16px ${ACC}55`, flexShrink: 0 }}>IT</div>
-            <span style={{ fontWeight: 700, fontSize: '.82rem', color: T.t1, letterSpacing: '-.01em' }}>InvestTrack</span>
+            <span style={{ fontWeight: 700, fontSize: '.82rem', color: T.t1, letterSpacing: '-.01em', whiteSpace: 'nowrap' }}>InvestTrack</span>
         </button>
     );
     if (isMobile) return (
         <>
-            <header style={{ position: 'sticky', top: 0, zIndex: 50, height: 50, background: T.dark ? 'rgba(10,10,14,0.95)' : T.s1, borderBottom: `1px solid ${T.brd}`, backdropFilter: 'blur(16px)', display: 'flex', alignItems: 'center', padding: '0 1rem', gap: 8 }}>
+            <header style={{ position: 'sticky', top: 0, zIndex: 50, height: 50, background: T.dark ? 'rgba(10,10,14,0.95)' : T.s1, borderBottom: `1px solid ${T.brd}`, backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', display: 'flex', alignItems: 'center', padding: '0 .75rem', gap: 7, overflow: 'hidden' }}>
                 {logo}
                 <div style={{ flex: 1 }} />
                 <button title="Exporter" aria-label="Exporter" onClick={expJSON} style={{ width: 36, height: 36, borderRadius: 8, border: `1px solid ${T.brd}`, background: 'transparent', color: T.t2, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Download size={15} /></button>
@@ -936,15 +875,15 @@ function TopBar({ page, selP, setPage, setSelP, mode, setMode, setModal, expJSON
         </>
     );
     return (
-        <header style={{ position: 'sticky', top: 0, zIndex: 50, background: T.dark ? 'rgba(10,10,14,0.92)' : T.s1, borderBottom: `1px solid ${T.brd}`, backdropFilter: 'blur(16px)', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, padding: '.55rem 1.25rem' }}>
+        <header style={{ position: 'sticky', top: 0, zIndex: 50, minHeight: 54, background: T.dark ? 'rgba(10,10,14,0.92)' : T.s1, borderBottom: `1px solid ${T.brd}`, backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', display: 'flex', alignItems: 'center', flexWrap: 'nowrap', gap: 8, padding: '.55rem 1.25rem', overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'none' }}>
             {logo}
-            <div style={{ display: 'inline-flex', background: T.s2, borderRadius: 10, padding: 3, gap: 2 }}>
+            <div style={{ display: 'inline-flex', background: T.s2, borderRadius: 10, padding: 3, gap: 2, flex: '0 0 auto' }}>
                 {[['dashboard', 'Dashboard'], ['poches', 'Poches']].map(([k, l]) => (
                     <button key={k} onClick={() => { setPage(k); setSelP(null); }} style={{ padding: '.3rem 1rem', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: '.77rem', fontWeight: activeTab === k ? 600 : 400, background: activeTab === k ? T.s1 : 'transparent', color: activeTab === k ? T.t1 : T.t2, boxShadow: activeTab === k ? '0 1px 4px rgba(0,0,0,0.12)' : 'none', transition: 'all .14s', minHeight: 34 }}>{l}</button>
                 ))}
             </div>
-            <div style={{ flex: 1 }} />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ flex: '1 1 auto', minWidth: 12 }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: '0 0 auto' }}>
                 <button onClick={expJSON} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '.36rem .75rem', borderRadius: 7, border: `1px solid ${T.brd}`, background: 'transparent', color: T.t2, cursor: 'pointer', fontSize: '.72rem', minHeight: 36 }}><Download size={11} />Export</button>
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '.36rem .75rem', borderRadius: 7, border: `1px solid ${T.brd}`, background: 'transparent', color: T.t2, cursor: 'pointer', fontSize: '.72rem', minHeight: 36 }}><Upload size={11} />Import<input type="file" accept=".json" style={{ display: 'none' }} onChange={impJSON} /></label>
                 {hasData && <button title="Fermer mes données et revenir à l'accueil" onClick={disconnectFile} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '.36rem .75rem', borderRadius: 7, border: `1px solid ${AMB}40`, background: `${AMB}10`, color: AMB, cursor: 'pointer', fontSize: '.72rem', minHeight: 36 }}><LogOut size={11} />Déconnexion</button>}
@@ -1482,7 +1421,6 @@ export default function App() {
     const startEmpty = () => { setPs([]); setTs([]); setVs([]); setDataMode('empty'); setNeedsExport(false); setShowWelcome(false); setSelP(null); setPage('dashboard'); };
     const useDemoAsBase = () => { setDataMode('saved'); setNeedsExport(true); setShowWelcome(false); };
     const disconnectFile = async () => {
-        if (!window.confirm('Déconnecter ce fichier ? La copie locale sera effacée de ce navigateur.')) return;
         try {
             if (window.storage.remove) await window.storage.remove('inv_v9');
             else window.localStorage?.removeItem('inv_v9');
@@ -1535,6 +1473,7 @@ export default function App() {
         if (modal.type === 'p') return <ModalPoche onAdd={addP} onClose={() => setModal(null)} count={ps.length} categories={categories} />;
         if (modal.type === 'editPoche') return <ModalEditPoche poche={modal.poche} categories={categories} onSave={(id, patch) => { updateP(id, patch); setModal(null); }} onClose={() => setModal(null)} />;
         if (modal.type === 'confirm') return <ConfirmDel msg={modal.msg} onOk={() => { modal.onOk(); setModal(null); }} onCancel={() => setModal(null)} />;
+        if (modal.type === 'disconnect') return <ConfirmDel title="Déconnecter le fichier" msg="La copie locale sera effacée de ce navigateur. Vos données restent dans votre fichier exporté, mais elles ne seront plus chargées ici." okLabel="Déconnecter" onOk={() => { disconnectFile(); setModal(null); }} onCancel={() => setModal(null)} />;
         return null;
     };
 
@@ -1546,7 +1485,7 @@ export default function App() {
     return (
         <TC.Provider value={T}>
             <div style={{ minHeight: '100vh', background: appBg, color: T.t1, fontFamily: 'system-ui,-apple-system,sans-serif', fontSize: '13px', lineHeight: 1.5 }}>
-                <TopBar page={page} selP={selP} setPage={setPage} setSelP={setSelP} mode={mode} setMode={setMode} setModal={setModal} expJSON={expJSON} impJSON={impJSON} dataMode={dataMode} disconnectFile={disconnectFile} onHome={() => { setSelP(null); setShowWelcome(true); }} />
+                <TopBar page={page} selP={selP} setPage={setPage} setSelP={setSelP} mode={mode} setMode={setMode} setModal={setModal} expJSON={expJSON} impJSON={impJSON} dataMode={dataMode} disconnectFile={() => setModal({ type: 'disconnect' })} onHome={() => { setSelP(null); setShowWelcome(true); }} />
                 <main style={{ maxWidth: 1240, margin: '0 auto', padding: `1.1rem 1rem ${mainPb}` }}>
                     <ExportReminder show={needsExport && !showWelcome} onExport={expJSON} />
                     {detailPoche
