@@ -1,37 +1,40 @@
 import { useState, useEffect, useMemo, useRef, createContext, useContext } from "react";
 import { ComposedChart, Area, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip as RT, ResponsiveContainer, Legend, ReferenceArea, ReferenceLine } from "recharts";
 import { Plus, Download, Upload, X, Trash2, ArrowLeft, TrendingUp, TrendingDown, Sun, Moon, ArrowUpRight, ArrowDownRight, LayoutDashboard, Layers, Pencil, Check, LogOut, ShieldCheck, CloudOff, PieChart as PieChartIcon } from "lucide-react";
+import {
+    ACCENT_COLOR as ACC,
+    VALUE_COLOR as VALC,
+    GAIN_COLOR as GRN,
+    LOSS_COLOR as LOSSC,
+    WARNING_COLOR as AMB,
+    POCKET_COLORS as PCOLS,
+    TRANSACTION_TYPES as TX_IN,
+    getTransactionColor as txC,
+    getTransactionLabel as txL,
+} from "./appConstants";
+import { DEMO_POCKETS as D_P, DEMO_TRANSACTIONS as D_T, DEMO_VALUATIONS as D_V } from "./demoData";
+import {
+    CURRENT_YEAR as CY,
+    TODAY,
+    formatDate as fDt,
+    formatEuro as fEUR,
+    formatPercent as fPctS,
+    formatSignedEuro as fEURS,
+    getGainColor as gc,
+} from "./formatters";
+import {
+    buildPocketHistory,
+    buildPortfolioHistory,
+    calculatePerformanceAtDate,
+    getAnnualPerformanceRows,
+    getPocketMetrics,
+    getPortfolioMetrics,
+} from "./portfolioAnalytics";
+import { createDarkTheme, createLightTheme } from "./theme";
 
-const ACC = '#E8364A';
-const VALC = '#38BDF8';
-const GRN = '#10B981';
-const LOSSC = '#FB7185';
-const AMB = '#F59E0B';
-const PCOLS = ['#E8364A', '#38BDF8', '#10B981', '#F59E0B', '#8B5CF6', '#F97316', '#06B6D4', '#EC4899'];
-
-function mkDark() {
-    return { dark: true, bg: '#0A0A0E', s1: '#15151C', s2: '#1C1C26', s3: '#252530', brd: 'rgba(255,255,255,0.11)', brd2: `${ACC}40`, t1: '#EEEEFF', t2: '#8080A8', t3: '#404060', inp: '#10101A' };
-}
-function mkLight() {
-    return { dark: false, bg: '#F0EFF8', s1: '#FFFFFF', s2: '#F5F4FC', s3: '#EBEAF5', brd: 'rgba(0,0,0,0.07)', brd2: `${ACC}30`, t1: '#0A0A14', t2: '#6060A0', t3: '#B0B0CC', inp: '#FFFFFF' };
-}
-
-const TX_IN = [{ v: 'apport', l: 'Apport', c: '#818CF8' }, { v: 'retrait', l: 'Retrait', c: AMB }];
-const TX_ALL = [...TX_IN, { v: 'dividende', l: 'Dividende', c: '#22D3EE' }, { v: 'frais', l: 'Frais', c: LOSSC }, { v: 'achat', l: 'Achat', c: '#60A5FA' }, { v: 'vente', l: 'Vente', c: GRN }, { v: 'transfert', l: 'Transfert', c: '#A78BFA' }, { v: 'correction', l: 'Correction', c: '#94A3B8' }];
-const txL = v => TX_ALL.find(t => t.v === v)?.l || v;
-const txC = v => TX_ALL.find(t => t.v === v)?.c || '#64748B';
-
-const TC = createContext(mkDark());
+const TC = createContext(createDarkTheme());
 const useT = () => useContext(TC);
 const uid = () => '_' + Math.random().toString(36).slice(2, 9);
-const TODAY = new Date().toISOString().split('T')[0];
-const CY = new Date().getFullYear();
-
-const fEUR = v => v == null ? '–' : new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(v);
-const fPctS = v => v == null ? '–' : (v >= 0 ? '+' : '') + (v * 100).toFixed(2) + ' %';
-const fEURS = v => v == null ? '–' : (v > 0 ? '+' : '') + fEUR(v);
-const fDt = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('fr-FR') : '–';
-const gc = v => v == null ? undefined : v >= 0 ? GRN : LOSSC;
 
 function useBreakpoint() {
     const [w, setW] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
@@ -39,107 +42,6 @@ function useBreakpoint() {
     return { isMobile: w < 640, isTablet: w < 960, w };
 }
 
-const D_P = [{ id: 'p1', nom: 'PEA', couleur: ACC, createdAt: '2023-01-01' }, { id: 'p2', nom: 'Crypto', couleur: AMB, createdAt: '2023-06-01' }, { id: 'p3', nom: 'SCPI', couleur: GRN, createdAt: '2023-03-01' }];
-const D_T = [
-    { id: 't1', type: 'apport', montant: 5000, timestamp: '2023-01-15', pocheId: 'p1' }, { id: 't2', type: 'apport', montant: 1000, timestamp: '2023-07-01', pocheId: 'p1' },
-    { id: 't3', type: 'dividende', montant: 180, timestamp: '2023-09-15', pocheId: 'p1' }, { id: 't4', type: 'apport', montant: 1500, timestamp: '2024-01-10', pocheId: 'p1' },
-    { id: 't5', type: 'frais', montant: 30, timestamp: '2024-12-31', pocheId: 'p1' }, { id: 't6', type: 'dividende', montant: 200, timestamp: '2024-09-15', pocheId: 'p1' },
-    { id: 't7', type: 'apport', montant: 2000, timestamp: '2023-06-01', pocheId: 'p2' }, { id: 't8', type: 'apport', montant: 500, timestamp: '2024-02-01', pocheId: 'p2' },
-    { id: 't9', type: 'retrait', montant: 800, timestamp: '2024-10-15', pocheId: 'p2' }, { id: 't10', type: 'apport', montant: 20000, timestamp: '2023-03-01', pocheId: 'p3' },
-    { id: 't11', type: 'dividende', montant: 450, timestamp: '2023-09-30', pocheId: 'p3' }, { id: 't12', type: 'dividende', montant: 455, timestamp: '2024-01-15', pocheId: 'p3' },
-    { id: 't13', type: 'dividende', montant: 460, timestamp: '2024-06-30', pocheId: 'p3' }, { id: 't14', type: 'dividende', montant: 465, timestamp: '2024-12-30', pocheId: 'p3' },
-];
-const D_V = [
-    { id: 'v1', pocheId: 'p1', valeur: 5100, date: '2023-03-01' }, { id: 'v2', pocheId: 'p1', valeur: 5800, date: '2023-06-01' }, { id: 'v3', pocheId: 'p1', valeur: 6400, date: '2023-09-01' }, { id: 'v4', pocheId: 'p1', valeur: 7100, date: '2023-12-31' },
-    { id: 'v5', pocheId: 'p1', valeur: 8200, date: '2024-04-01' }, { id: 'v6', pocheId: 'p1', valeur: 8900, date: '2024-08-01' }, { id: 'v7', pocheId: 'p1', valeur: 9400, date: '2024-12-31' }, { id: 'v8', pocheId: 'p1', valeur: 9800, date: '2025-04-01' },
-    { id: 'v9', pocheId: 'p2', valeur: 2100, date: '2023-08-01' }, { id: 'v10', pocheId: 'p2', valeur: 3200, date: '2023-12-31' }, { id: 'v11', pocheId: 'p2', valeur: 4100, date: '2024-04-01' }, { id: 'v12', pocheId: 'p2', valeur: 2800, date: '2024-08-01' },
-    { id: 'v13', pocheId: 'p2', valeur: 3500, date: '2024-12-31' }, { id: 'v14', pocheId: 'p2', valeur: 3800, date: '2025-04-01' },
-    { id: 'v15', pocheId: 'p3', valeur: 20300, date: '2023-06-01' }, { id: 'v16', pocheId: 'p3', valeur: 20700, date: '2023-12-31' }, { id: 'v17', pocheId: 'p3', valeur: 21100, date: '2024-06-01' }, { id: 'v18', pocheId: 'p3', valeur: 21600, date: '2024-12-31' }, { id: 'v19', pocheId: 'p3', valeur: 22000, date: '2025-04-01' },
-];
-
-function calcXIRR(cfs) {
-    if (!cfs || cfs.length < 2) return null;
-    const s = [...cfs].sort((a, b) => a.date.localeCompare(b.date));
-    const t0 = new Date(s[0].date).getTime(), yr = d => (new Date(d).getTime() - t0) / 31557600000;
-    if (!s.some(c => c.a > 0) || !s.some(c => c.a < 0)) return null;
-    const npv = rate => {
-        if (rate <= -1) return null;
-        let f = 0;
-        for (const c of s) { const pv = Math.pow(1 + rate, yr(c.date)); if (!isFinite(pv) || pv === 0) return null; f += c.a / pv; }
-        return f;
-    };
-    let r = 0.1;
-    for (let i = 0; i < 600; i++) {
-        let f = 0, df = 0;
-        for (const c of s) { const t = yr(c.date), b = 1 + r; if (b <= 0) return null; const pv = Math.pow(b, t); if (!isFinite(pv)) continue; f += c.a / pv; df -= t * c.a / (pv * b); }
-        if (Math.abs(f) < 1e-7) return r > -1 ? r : null;
-        if (!df || !isFinite(df)) break;
-        const r2 = r - f / df; if (!isFinite(r2)) break;
-        if (Math.abs(r2 - r) < 1e-9) { const f2 = npv(r2); if (f2 != null && Math.abs(f2) < 1e-7) return r2 > -1 ? r2 : null; break; }
-        r = Math.max(-0.9999, r2);
-    }
-    let lo = -0.9999, hi = 1, flo = npv(lo), fhi = npv(hi);
-    for (let i = 0; i < 60 && flo != null && fhi != null && flo * fhi > 0; i++) { hi *= 2; fhi = npv(hi); }
-    if (flo == null || fhi == null || flo * fhi > 0) return null;
-    for (let i = 0; i < 120; i++) {
-        const mid = (lo + hi) / 2, fmid = npv(mid); if (fmid == null) return null;
-        if (Math.abs(fmid) < 1e-7) return mid;
-        if (flo * fmid <= 0) { hi = mid; fhi = fmid; } else { lo = mid; flo = fmid; }
-    }
-    return (lo + hi) / 2;
-}
-function dietzCalc(bmv, emv, flows, sd, ed, resultAdj = 0) {
-    const cd = (new Date(ed) - new Date(sd)) / 86400000; if (cd <= 0) return null;
-    let net = 0, wc = 0;
-    for (const f of flows) { const di = (new Date(f.date) - new Date(sd)) / 86400000, w = Math.max(0, Math.min(1, (cd - di) / cd)); net += f.a; wc += f.a * w; }
-    const dn = bmv + wc; return dn > 0.01 ? (emv + resultAdj - bmv - net) / dn : null;
-}
-function getPocheMetrics(pid, txs, vals) {
-    const pt = txs.filter(t => t.pocheId === pid), pv = vals.filter(v => v.pocheId === pid).sort((a, b) => a.date.localeCompare(b.date));
-    const sm = type => pt.filter(t => t.type === type).reduce((s, t) => s + t.montant, 0);
-    const apports = sm('apport'), retraits = sm('retrait'), dividendes = sm('dividende'), frais = sm('frais');
-    const capital = apports - retraits, valActu = pv.length ? pv[pv.length - 1].valeur : 0;
-    const xCFs = pt.filter(t => ['apport', 'retrait', 'dividende', 'frais'].includes(t.type)).map(t => ({ date: t.timestamp, a: (t.type === 'apport' || t.type === 'frais') ? -t.montant : t.montant }));
-    if (valActu > 0 && xCFs.length) xCFs.push({ date: pv[pv.length - 1].date, a: valActu });
-    const xirr = xCFs.length >= 2 ? calcXIRR(xCFs) : null;
-    let dietz = null;
-    if (pv.length >= 2) { const sd = pv[0].date, ed = pv[pv.length - 1].date; const dCFs = pt.filter(t => ['apport', 'retrait'].includes(t.type) && t.timestamp > sd && t.timestamp <= ed).map(t => ({ date: t.timestamp, a: t.type === 'apport' ? t.montant : -t.montant })); const resAdj = pt.filter(t => ['dividende', 'frais'].includes(t.type) && t.timestamp > sd && t.timestamp <= ed).reduce((s, t) => s + (t.type === 'dividende' ? t.montant : -t.montant), 0); dietz = dietzCalc(pv[0].valeur, valActu, dCFs, sd, ed, resAdj); }
-    const gainNonRealise = valActu - capital, gainRealise = dividendes - frais;
-    return { apports, retraits, dividendes, frais, capital, valActu, gainNonRealise, gainRealise, gainLatent: gainNonRealise + gainRealise, xirr, dietz };
-}
-function getAnnualRows(pid, txs, vals) {
-    const isAll = pid === 'all', pids = isAll ? [...new Set([...vals.map(v => v.pocheId), ...txs.map(t => t.pocheId)])] : [pid];
-    const pt = txs.filter(t => pids.includes(t.pocheId));
-    const getV = date => pids.reduce((s, p) => { const l = vals.filter(v => v.pocheId === p && v.date <= date).sort((a, b) => b.date.localeCompare(a.date)); return s + (l.length ? l[0].valeur : 0); }, 0);
-    const getLastValDate = y => vals.filter(v => pids.includes(v.pocheId) && v.date.slice(0, 4) === String(y)).map(v => v.date).sort().pop();
-    const years = [...new Set([...pt.map(t => +t.timestamp.slice(0, 4)), ...vals.filter(v => pids.includes(v.pocheId)).map(v => +v.date.slice(0, 4))])].sort((a, b) => a - b);
-    if (!years.length) return [];
-    return years.reduce((rows, y) => {
-        const sd = `${y}-01-01`, ed = getLastValDate(y) || `${y}-12-31`;
-        const bmv = getV(`${y - 1}-12-31`), emv = getV(ed); if (bmv === 0 && emv === 0) return rows;
-        const yt = pt.filter(t => t.timestamp >= sd && t.timestamp <= ed);
-        const apports = yt.filter(t => t.type === 'apport').reduce((s, t) => s + t.montant, 0), retraits = yt.filter(t => t.type === 'retrait').reduce((s, t) => s + t.montant, 0);
-        const resAdj = yt.filter(t => ['dividende', 'frais'].includes(t.type)).reduce((s, t) => s + (t.type === 'dividende' ? t.montant : -t.montant), 0);
-        const netCF = apports - retraits, perfE = emv + resAdj - bmv - netCF;
-        const cumE = rows.reduce((s, r) => s + r.perfE, 0) + perfE;
-        const capitalEnd = capitalAtDate(pids, txs, ed);
-        const perfPct = capitalEnd > 0.01 ? perfE / capitalEnd : null;
-        const cumPct = capitalEnd > 0.01 ? cumE / capitalEnd : null;
-        const dCFs = yt.filter(t => ['apport', 'retrait'].includes(t.type)).map(t => ({ date: t.timestamp, a: t.type === 'apport' ? t.montant : -t.montant }));
-        const d = dietzCalc(bmv, emv, dCFs, sd, ed, resAdj);
-        return [...rows, { y, bmv, emv, apports, retraits, netCF, perfE, perfPct, dietz: d, cumE, cumPct, capitalEnd }];
-    }, []);
-}
-function capitalAtDate(pids, txs, date) {
-    const pt = txs.filter(t => pids.includes(t.pocheId) && t.timestamp <= date);
-    const sm = type => pt.filter(t => t.type === type).reduce((s, t) => s + t.montant, 0);
-    return sm('apport') - sm('retrait');
-}
-function perfAtDate(pids, txs, date, value) {
-    const pt = txs.filter(t => pids.includes(t.pocheId) && t.timestamp <= date);
-    const sm = type => pt.filter(t => t.type === type).reduce((s, t) => s + t.montant, 0);
-    return value - sm('apport') + sm('retrait') + sm('dividende') - sm('frais');
-}
 // ── Info modal ──
 function InfoModal({ onClose, title, lines }) {
     const T = useT();
@@ -343,7 +245,7 @@ function RechartsYearBands({ data, labelKey }) {
 function Sparkline({ pocheId, vals, txs = [], width = 100, height = 44 }) {
     const pv = vals.filter(v => v.pocheId === pocheId).sort((a, b) => a.date.localeCompare(b.date));
     if (pv.length < 2) return <div style={{ width, height }} />;
-    const prices = pv.map(v => perfAtDate([pocheId], txs, v.date, v.valeur)), mn = Math.min(...prices), mx = Math.max(...prices), range = mx - mn || 1;
+    const prices = pv.map(v => calculatePerformanceAtDate([pocheId], txs, v.date, v.valeur)), mn = Math.min(...prices), mx = Math.max(...prices), range = mx - mn || 1;
     const pts = prices.map((p, i) => [(i / (prices.length - 1)) * width, height - 2 - ((p - mn) / range) * (height - 4)]);
     const line = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
     const area = line + ` L${width},${height} L0,${height} Z`;
@@ -488,7 +390,7 @@ function TRow({ onClick, children }) {
 
 function AnnualTable({ pid, txs, vals }) {
     const T = useT(); const { th, thR, td, tdR } = useTS(); const { isMobile } = useBreakpoint();
-    const rows = useMemo(() => getAnnualRows(pid, txs, vals), [pid, txs, vals]);
+    const rows = useMemo(() => getAnnualPerformanceRows(pid, txs, vals), [pid, txs, vals]);
     if (!rows.length) return <div style={{ color: T.t2, fontSize: '.75rem', padding: '.5rem 0' }}>Données insuffisantes.</div>;
     return (
         <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
@@ -622,7 +524,7 @@ function ModalSaisie({ poches, defPoche, onSave, onClose }) {
                     <div style={{ fontSize: '.58rem', color: T.t2, textTransform: 'uppercase', letterSpacing: '.1em', fontWeight: 600, marginBottom: '.65rem' }}>Valorisation <span style={{ fontWeight: 400, color: T.t3 }}>— optionnel</span></div>
                     <Lbl ch="Valeur totale de la poche (€)" /><Inp type="number" min="0" step="0.01" value={valeur} onChange={e => setValeur(e.target.value)} placeholder="0" />
                 </div>
-                <div><Lbl ch="Note" /><Inp value={note} onChange={e => setNote(e.target.value)} placeholder="Contexte, arbitrage, rachat…" /></div>
+                <div><Lbl ch="Note" /><Inp value={note} onChange={e => setNote(e.target.value)} placeholder="Contexte, objectif, commentaire…" /></div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                     <span style={{ fontSize: '.68rem', color: ok ? GRN : T.t3, display: 'flex', alignItems: 'center', gap: 5 }}>{ok && <span style={{ width: 6, height: 6, borderRadius: '50%', background: GRN, display: 'inline-block' }} />}{status}</span>
                     <div style={{ display: 'flex', gap: 6 }}><Btn ghost onClick={onClose}>Annuler</Btn><Btn primary onClick={save} style={{ opacity: ok ? 1 : .4 }}>Enregistrer</Btn></div>
@@ -695,13 +597,8 @@ function ConfirmDel({ msg, onOk, onCancel, title = 'Confirmer', okLabel = 'Suppr
 function LandingDemoMockup() {
     const T = useT(); const { isMobile } = useBreakpoint();
     const ps = D_P, ts = D_T, vs = D_V;
-    const pm = useMemo(() => ps.map(p => ({ ...p, ...getPocheMetrics(p.id, ts, vs) })), [ps, ts, vs]);
-    const gm = useMemo(() => {
-        const tv = pm.reduce((s, p) => s + p.valActu, 0), tc = pm.reduce((s, p) => s + p.capital, 0), td = pm.reduce((s, p) => s + p.dividendes, 0), tf = pm.reduce((s, p) => s + p.frais, 0), latent = pm.reduce((s, p) => s + p.gainNonRealise, 0), realised = pm.reduce((s, p) => s + p.gainRealise, 0);
-        const xCFs = ts.filter(t => ['apport', 'retrait', 'dividende', 'frais'].includes(t.type)).map(t => ({ date: t.timestamp, a: (t.type === 'apport' || t.type === 'frais') ? -t.montant : t.montant }));
-        ps.forEach(p => { const pv = vs.filter(v => v.pocheId === p.id).sort((a, b) => a.date.localeCompare(b.date)); if (pv.length && pv[pv.length - 1].valeur > 0) xCFs.push({ date: pv[pv.length - 1].date, a: pv[pv.length - 1].valeur }); });
-        return { tv, tc, tg: pm.reduce((s, p) => s + p.gainLatent, 0), td, tf, latent, realised, xirr: xCFs.length >= 2 ? calcXIRR(xCFs) : null };
-    }, [pm, ps, ts, vs]);
+    const pm = useMemo(() => ps.map(p => ({ ...p, ...getPocketMetrics(p.id, ts, vs) })), [ps, ts, vs]);
+    const gm = useMemo(() => getPortfolioMetrics(ps, ts, vs, pm), [pm, ps, ts, vs]);
     const noop = () => { };
     return (
         <div style={{ background: T.dark ? 'radial-gradient(ellipse 60% 50% at 8% 92%,rgba(232,54,74,.07) 0%,transparent 50%),#0A0A0E' : T.bg, color: T.t1, fontFamily: 'system-ui,-apple-system,sans-serif', fontSize: 13, lineHeight: 1.5, overflow: 'visible' }}>
@@ -725,7 +622,7 @@ function WelcomeModal({ onEmpty, canClose, onClose, mode, setMode }) {
     const landingRef = useRef(null);
     const demoPreviewRef = useRef(null);
     const touchYRef = useRef(null);
-    const routeScrollToDemo = deltaY => {
+    const routeScrollToDemo = (deltaY, source = 'wheel') => {
         const demo = demoPreviewRef.current;
         if (!demo || !deltaY || Math.abs(deltaY) < 1) return false;
         const max = demo.scrollHeight - demo.clientHeight;
@@ -738,11 +635,14 @@ function WelcomeModal({ onEmpty, canClose, onClose, mode, setMode }) {
         const canScrollUp = deltaY < 0 && demo.scrollTop > 1;
         if (!canScrollDown && !canScrollUp) return false;
         const before = demo.scrollTop;
-        demo.scrollTop = Math.max(0, Math.min(max, before + deltaY));
+        const speed = source === 'touch' ? 0.55 : 0.32;
+        const limit = source === 'touch' ? 42 : 34;
+        const softenedDelta = Math.sign(deltaY) * Math.min(Math.abs(deltaY) * speed, limit);
+        demo.scrollTop = Math.max(0, Math.min(max, before + softenedDelta));
         return demo.scrollTop !== before;
     };
     const onLandingWheel = e => {
-        if (routeScrollToDemo(e.deltaY)) {
+        if (routeScrollToDemo(e.deltaY, 'wheel')) {
             e.preventDefault();
             e.stopPropagation();
         }
@@ -752,7 +652,7 @@ function WelcomeModal({ onEmpty, canClose, onClose, mode, setMode }) {
         const y = e.touches?.[0]?.clientY;
         if (touchYRef.current == null || y == null) return;
         const deltaY = touchYRef.current - y;
-        if (routeScrollToDemo(deltaY)) {
+        if (routeScrollToDemo(deltaY, 'touch')) {
             e.preventDefault();
             e.stopPropagation();
         }
@@ -918,11 +818,7 @@ function HeroBanner({ gm, ps, vs, ts }) {
     const T = useT(); const { isMobile } = useBreakpoint();
     const [chartMode, setChartMode] = useState('value');
     const gainPct = gm.tc > 0 ? gm.tg / gm.tc : null;
-    const histo = useMemo(() => {
-        const dates = [...new Set(vs.map(v => v.date))].sort();
-        const pids = ps.map(p => p.id);
-        return dates.map(d => { let tot = 0; ps.forEach(p => { const l = vs.filter(v => v.pocheId === p.id && v.date <= d).sort((a, b) => b.date.localeCompare(a.date)); tot += l.length ? l[0].valeur : 0; }); const p = perfAtDate(pids, ts, d, tot), c = capitalAtDate(pids, ts, d), pct = c > 0.01 ? p / c : null; return { date: d.slice(0, 7), v: tot, c, p, pct, pPos: p >= 0 ? p : null, pNeg: p < 0 ? p : null, pctPos: pct != null && pct >= 0 ? pct : null, pctNeg: pct != null && pct < 0 ? pct : null }; });
-    }, [ps, ts, vs]);
+    const histo = useMemo(() => buildPortfolioHistory(ps, ts, vs), [ps, ts, vs]);
     const dataKey = chartMode === 'value' ? 'v' : chartMode === 'pct' ? 'pct' : 'p';
     const chartLabel = chartMode === 'value' ? 'Valeur' : chartMode === 'pct' ? 'Perf. %' : 'Perf. €';
     const chartFmt = chartMode === 'pct' ? fPctS : fEUR;
@@ -952,10 +848,6 @@ function HeroBanner({ gm, ps, vs, ts }) {
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '.24rem .6rem', borderRadius: 6, background: T.s2, border: `1px solid ${T.brd}` }}>
                             <span style={{ fontSize: '.6rem', color: T.t3, fontWeight: 500 }}>Latent</span>
                             <span style={{ fontSize: '.78rem', fontWeight: 700, color: gc(gm.latent), fontVariantNumeric: 'tabular-nums' }}>{fEURS(gm.latent)}</span>
-                        </div>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '.24rem .6rem', borderRadius: 6, background: T.s2, border: `1px solid ${T.brd}` }}>
-                            <span style={{ fontSize: '.6rem', color: T.t3, fontWeight: 500 }}>Réalisé</span>
-                            <span style={{ fontSize: '.78rem', fontWeight: 700, color: gc(gm.realised), fontVariantNumeric: 'tabular-nums' }}>{fEURS(gm.realised)}</span>
                         </div>
                     </div>
                     <div style={{ fontSize: '.7rem', color: T.t3 }}>{ps.length} poche{ps.length > 1 ? 's' : ''}</div>
@@ -1035,7 +927,7 @@ function TxTimeline({ txs, onDel }) {
             <div style={{ position: 'absolute', left: 76, top: 16, bottom: 16, width: 1, background: T.brd, zIndex: 0 }} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {txs.map(t => {
-                    const col = txC(t.type), isIn = ['retrait', 'dividende', 'vente'].includes(t.type);
+                    const col = txC(t.type), isIn = t.type === 'retrait';
                     return (
                         <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, position: 'relative' }}>
                             <div style={{ width: 68, textAlign: 'right', fontSize: '.63rem', color: T.t3, flexShrink: 0, lineHeight: 1.3 }}>{fDt(t.timestamp)}</div>
@@ -1046,7 +938,7 @@ function TxTimeline({ txs, onDel }) {
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                     <Tag label={txL(t.type)} color={col} />
                                     <div style={{ flex: 1 }} />
-                                    <span style={{ fontWeight: 700, fontSize: '.83rem', color: isIn ? GRN : t.type === 'frais' ? LOSSC : T.t1, fontVariantNumeric: 'tabular-nums' }}>{fEUR(t.montant)}</span>
+                                    <span style={{ fontWeight: 700, fontSize: '.83rem', color: isIn ? GRN : T.t1, fontVariantNumeric: 'tabular-nums' }}>{fEUR(t.montant)}</span>
                                     <button onClick={() => onDel(t.id)} style={{ background: 'none', border: 'none', color: T.t3, cursor: 'pointer', opacity: .5, lineHeight: 0, padding: 4, minWidth: 28, minHeight: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Trash2 size={13} /></button>
                                 </div>
                                 {t.commentaire && <div style={{ color: T.t2, fontSize: '.67rem', marginTop: 5, lineHeight: 1.45 }}>{t.commentaire}</div>}
@@ -1115,10 +1007,10 @@ function PocheDetail({ poche, txs, vals, onBack, onDelTx, onDelVal, onDelPoche, 
     const T = useT(); const { isMobile, isTablet } = useBreakpoint();
     const [sub, setSub] = useState('apercu');
     const [chartMode, setChartMode] = useState('value');
-    const m = useMemo(() => getPocheMetrics(poche.id, txs, vals), [poche, txs, vals]);
+    const m = useMemo(() => getPocketMetrics(poche.id, txs, vals), [poche, txs, vals]);
     const pv = useMemo(() => vals.filter(v => v.pocheId === poche.id).sort((a, b) => a.date.localeCompare(b.date)), [poche, vals]);
     const pt = useMemo(() => txs.filter(t => t.pocheId === poche.id).sort((a, b) => b.timestamp.localeCompare(a.timestamp)), [poche, txs]);
-    const chart = pv.map(v => { const p = perfAtDate([poche.id], txs, v.date, v.valeur), c = capitalAtDate([poche.id], txs, v.date), pct = c > 0.01 ? p / c : null; return { d: v.date.slice(0, 7), v: v.valeur, c, p, pct, pPos: p >= 0 ? p : null, pNeg: p < 0 ? p : null, pctPos: pct != null && pct >= 0 ? pct : null, pctNeg: pct != null && pct < 0 ? pct : null }; });
+    const chart = useMemo(() => buildPocketHistory(poche.id, txs, vals).map(point => ({ ...point, d: point.date })), [poche, txs, vals]);
     const chartDataKey = chartMode === 'value' ? 'v' : chartMode === 'pct' ? 'pct' : 'p';
     const chartLabel = chartMode === 'value' ? 'Valeur' : chartMode === 'pct' ? 'Perf. %' : 'Perf. €';
     const chartFmt = chartMode === 'pct' ? fPctS : fEUR;
@@ -1135,7 +1027,6 @@ function PocheDetail({ poche, txs, vals, onBack, onDelTx, onDelVal, onDelPoche, 
         { label: 'XIRR', value: fPctS(m.xirr), sub: 'Annualisé net', color: gc(m.xirr), info: XIRR_INFO },
         { label: 'Dietz', value: fPctS(m.dietz), sub: 'Période complète', color: gc(m.dietz), info: DIETZ_INFO },
     ];
-    const splitTotal = Math.max(Math.abs(m.gainNonRealise) + Math.abs(m.gainRealise), 1);
 
     return (
         <div>
@@ -1208,20 +1099,16 @@ function PocheDetail({ poche, txs, vals, onBack, onDelTx, onDelVal, onDelPoche, 
                     <SC title="Récapitulatif annuel"><AnnualTable pid={poche.id} txs={txs} vals={vals} /></SC>
                     <div style={{ display: 'grid', gap: '.7rem' }}>
                         <SC title="Flux">
-                            {[{ l: 'Apports', v: fEUR(m.apports), c: null }, { l: 'Retraits', v: fEUR(m.retraits), c: AMB }, { l: 'Dividendes', v: fEUR(m.dividendes), c: GRN }].map(r => (
+                            {[{ l: 'Apports', v: fEUR(m.apports), c: null }, { l: 'Retraits', v: fEUR(m.retraits), c: AMB }].map(r => (
                                 <div key={r.l} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '.35rem 0', borderBottom: `1px solid ${T.brd}` }}>
                                     <span style={{ fontSize: '.71rem', color: T.t2 }}>{r.l}</span>
                                     <span style={{ fontWeight: 600, fontSize: '.78rem', color: r.c || T.t1, fontVariantNumeric: 'tabular-nums' }}>{r.v}</span>
                                 </div>
                             ))}
                         </SC>
-                        <SC title="Réalisé / latent">
-                            {[{ l: 'Latent', v: m.gainNonRealise, c: poche.couleur }, { l: 'Réalisé', v: m.gainRealise, c: GRN }].map(r => (
-                                <div key={r.l} style={{ marginBottom: '.55rem' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.72rem', color: T.t2, marginBottom: 4 }}><span>{r.l}</span><strong style={{ color: gc(r.v), fontVariantNumeric: 'tabular-nums' }}>{fEURS(r.v)}</strong></div>
-                                    <div style={{ height: 5, borderRadius: 99, background: T.s3, overflow: 'hidden' }}><div style={{ width: `${Math.min(100, Math.abs(r.v) / splitTotal * 100)}%`, height: '100%', background: r.c, opacity: r.v >= 0 ? 1 : .55 }} /></div>
-                                </div>
-                            ))}
+                        <SC title="Gain">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.72rem', color: T.t2, marginBottom: 4 }}><span>Valeur - capital</span><strong style={{ color: gc(m.gainNonRealise), fontVariantNumeric: 'tabular-nums' }}>{fEURS(m.gainNonRealise)}</strong></div>
+                            <div style={{ height: 5, borderRadius: 99, background: T.s3, overflow: 'hidden' }}><div style={{ width: `${Math.min(100, Math.abs(m.gainNonRealise) / Math.max(Math.abs(m.gainNonRealise), 1) * 100)}%`, height: '100%', background: poche.couleur, opacity: m.gainNonRealise >= 0 ? 1 : .55 }} /></div>
                         </SC>
                     </div>
                 </div>
@@ -1398,7 +1285,7 @@ export default function App() {
     const [showWelcome, setShowWelcome] = useState(false);
     const [needsExport, setNeedsExport] = useState(false);
     const [modal, setModal] = useState(null);
-    const T = useMemo(() => mode === 'dark' ? mkDark() : mkLight(), [mode]);
+    const T = useMemo(() => mode === 'dark' ? createDarkTheme() : createLightTheme(), [mode]);
     const { isMobile } = useBreakpoint();
 
     useEffect(() => {
@@ -1423,14 +1310,9 @@ export default function App() {
     }, []);
     useEffect(() => { if (!ready || showWelcome || dataMode === 'demo') return; window.storage.set('inv_v9', JSON.stringify({ p: ps, t: ts, v: vs, source: dataMode === 'file' ? 'file' : 'saved' })).catch(() => { }); }, [ps, ts, vs, ready, showWelcome, dataMode]);
 
-    const pm = useMemo(() => ps.map(p => ({ ...p, ...getPocheMetrics(p.id, ts, vs) })), [ps, ts, vs]);
+    const pm = useMemo(() => ps.map(p => ({ ...p, ...getPocketMetrics(p.id, ts, vs) })), [ps, ts, vs]);
     const categories = useMemo(() => [...new Set(ps.map(p => p.categorie?.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr-FR')), [ps]);
-    const gm = useMemo(() => {
-        const tv = pm.reduce((s, p) => s + p.valActu, 0), tc = pm.reduce((s, p) => s + p.capital, 0), td = pm.reduce((s, p) => s + p.dividendes, 0), tf = pm.reduce((s, p) => s + p.frais, 0), latent = pm.reduce((s, p) => s + p.gainNonRealise, 0), realised = pm.reduce((s, p) => s + p.gainRealise, 0);
-        const xCFs = ts.filter(t => ['apport', 'retrait', 'dividende', 'frais'].includes(t.type)).map(t => ({ date: t.timestamp, a: (t.type === 'apport' || t.type === 'frais') ? -t.montant : t.montant }));
-        ps.forEach(p => { const pv = vs.filter(v => v.pocheId === p.id).sort((a, b) => a.date.localeCompare(b.date)); if (pv.length && pv[pv.length - 1].valeur > 0) xCFs.push({ date: pv[pv.length - 1].date, a: pv[pv.length - 1].valeur }); });
-        return { tv, tc, tg: pm.reduce((s, p) => s + p.gainLatent, 0), td, tf, latent, realised, xirr: xCFs.length >= 2 ? calcXIRR(xCFs) : null };
-    }, [pm, ps, ts, vs]);
+    const gm = useMemo(() => getPortfolioMetrics(ps, ts, vs, pm), [pm, ps, ts, vs]);
 
     const markPersonal = () => { setDataMode(m => m === 'file' ? 'file' : 'saved'); setNeedsExport(true); setShowWelcome(false); };
     const startEmpty = () => { setPs([]); setTs([]); setVs([]); setDataMode('empty'); setNeedsExport(false); setShowWelcome(false); setSelP(null); setPage('dashboard'); };
