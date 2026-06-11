@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, createContext, useContext } from "react";
 import { ComposedChart, Area, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip as RT, ResponsiveContainer, Legend, ReferenceArea, ReferenceLine } from "recharts";
-import { Plus, Download, Upload, X, Trash2, ArrowLeft, TrendingUp, TrendingDown, Sun, Moon, ArrowUpRight, ArrowDownRight, LayoutDashboard, Layers, Pencil, Check, LogOut, ShieldCheck, CloudOff, AlertCircle, PieChart as PieChartIcon } from "lucide-react";
+import { Plus, Download, Upload, X, Trash2, ArrowLeft, TrendingUp, TrendingDown, Sun, Moon, ArrowUpRight, ArrowDownRight, LayoutDashboard, Layers, Pencil, Check, LogOut, ShieldCheck, CloudOff, PieChart as PieChartIcon } from "lucide-react";
 
 const ACC = '#E8364A';
 const VALC = '#38BDF8';
@@ -741,23 +741,28 @@ function WelcomeModal({ onEmpty, canClose, onClose, mode, setMode }) {
     const features = [
         { cls: 'large', Icon: TrendingUp, title: 'La vraie rentabilité', text: '1 000 € gagnés en 1 mois ou en 10 ans, ce n\'est pas la même chose. L\'application calcule automatiquement votre rendement annuel réel via le XIRR.' },
         { Icon: PieChartIcon, title: 'Où est votre argent ?', text: 'Suivez facilement le poids de chaque placement dans votre patrimoine global grâce aux graphiques de répartition.', color: GRN },
-        { Icon: AlertCircle, title: 'Assistant intelligent', text: 'Oubli de mise à jour ? Capital devenu négatif par erreur ? L\'application vous alerte si elle détecte une anomalie.', color: VALC },
         { cls: 'large', Icon: Layers, title: 'Séparez les apports des gains', text: 'Voir son solde augmenter c\'est bien, mais InvestTrack distingue clairement ce que vous avez versé de ce que vos placements ont généré.' },
     ];
     return (
         <div style={{ position: 'fixed', inset: 0, width: '100vw', zIndex: 220, background: L.bg, color: L.text, overflowY: 'auto', overflowX: 'hidden', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', lineHeight: 1.6 }}>
-            <style>{`@media (max-width: 760px){.landing-demo-grid{grid-template-columns:1fr!important}.landing-bento{grid-template-columns:1fr!important}.landing-feature-large{grid-column:auto!important}.landing-demo-side{display:none!important}}@media (max-width: 430px){.landing-brand-text{display:none!important}}`}</style>
+            <style>{`
+                .landing-scrollbar{scrollbar-width:thin;scrollbar-color:${ACC}55 transparent}
+                .landing-scrollbar::-webkit-scrollbar{width:8px;height:8px}.landing-scrollbar::-webkit-scrollbar-thumb{background:${ACC}55;border-radius:99px}.landing-scrollbar::-webkit-scrollbar-track{background:transparent}
+                @media (max-width: 900px){.landing-demo-shell{max-width:calc(100vw - 1.5rem)!important;margin-bottom:3.5rem!important}.landing-demo-card{transform:none!important;border-radius:16px!important}.landing-app-preview{max-height:78vh!important}.landing-section{padding-top:4rem!important;padding-bottom:4rem!important}.landing-trust-grid{gap:1rem!important}.landing-bento{grid-template-columns:1fr!important}.landing-feature-large{grid-column:auto!important}.landing-feature-card{min-height:220px!important;padding:2rem 1.5rem!important}.landing-feature-card p{max-width:100%!important}.landing-demo-side{display:none!important}}
+                @media (max-width: 640px){.landing-hero{padding:3.25rem .9rem 2rem!important}.landing-hero h1{font-size:clamp(2.35rem,14vw,3.55rem)!important;line-height:1.02!important}.landing-hero p{font-size:1rem!important}.landing-nav{padding:.85rem 1rem!important}.landing-open-label{display:none!important}.landing-app-preview{max-height:72vh!important}.landing-demo-windowbar{padding:.7rem!important}.landing-section{padding-left:.9rem!important;padding-right:.9rem!important}.landing-footer{justify-content:center!important;text-align:center!important}}
+                @media (max-width: 430px){.landing-brand-text{display:none!important}.landing-app-preview{max-height:68vh!important}.landing-demo-shell{padding:0 .6rem!important;max-width:100vw!important}.landing-feature-card{min-height:200px!important}}
+            `}</style>
             <div style={{ position: 'absolute', width: 800, height: 800, background: `radial-gradient(circle, ${ACC}${T.dark ? '66' : '30'} 0%, rgba(0,0,0,0) 60%)`, top: -300, left: '50%', transform: 'translateX(-50%)', filter: 'blur(90px)', pointerEvents: 'none', opacity: T.dark ? .5 : .75 }} />
-            <nav style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: isMobile ? '1rem' : '1.5rem 2rem', maxWidth: 1200, width: '100%', margin: '0 auto', position: 'sticky', top: 0, zIndex: 5, boxSizing: 'border-box', background: T.dark ? 'rgba(10,10,14,.72)' : 'rgba(247,246,252,.74)', borderBottom: `1px solid ${L.border}`, backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}>
+            <nav className="landing-nav" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: isMobile ? '1rem' : '1.5rem 2rem', maxWidth: 1200, width: '100%', margin: '0 auto', position: 'sticky', top: 0, zIndex: 5, boxSizing: 'border-box', background: T.dark ? 'rgba(10,10,14,.72)' : 'rgba(247,246,252,.74)', borderBottom: `1px solid ${L.border}`, backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, color: L.text, fontWeight: 800, fontSize: '1.2rem', letterSpacing: '-.03em' }}><div style={{ width: 32, height: 32, flex: '0 0 auto', background: `linear-gradient(135deg,${ACC},#FF6B6B)`, color: '#fff', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.7rem', fontWeight: 900, boxShadow: `0 0 16px ${ACC}66` }}>IT</div><span className="landing-brand-text" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>InvestTrack</span></div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, flexShrink: 0 }}>
                     <button type="button" onClick={() => setMode(m => m === 'dark' ? 'light' : 'dark')} title="Changer de thème" aria-label="Changer de thème" style={{ width: 36, height: 36, flex: '0 0 auto', borderRadius: 10, border: `1px solid ${L.border}`, background: L.surfaceSoft, color: L.textSoft, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{mode === 'dark' ? <Sun size={16} /> : <Moon size={16} />}</button>
-                    <button type="button" onClick={openApp} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: isMobile ? '.55rem .8rem' : '.5rem 1rem', borderRadius: 12, fontWeight: 600, fontSize: isMobile ? '.78rem' : '.85rem', cursor: 'pointer', background: L.surfaceSoft, border: `1px solid ${L.border}`, color: L.text, whiteSpace: 'nowrap' }}>Ouvrir l'app <ArrowUpRight size={14} /></button>
+                    <button type="button" onClick={openApp} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: isMobile ? '.55rem .8rem' : '.5rem 1rem', borderRadius: 12, fontWeight: 600, fontSize: isMobile ? '.78rem' : '.85rem', cursor: 'pointer', background: L.surfaceSoft, border: `1px solid ${L.border}`, color: L.text, whiteSpace: 'nowrap' }}><span className="landing-open-label">Ouvrir l'app</span><ArrowUpRight size={14} /></button>
                     {canClose && <button type="button" onClick={onClose} title="Fermer" aria-label="Fermer" style={{ width: 36, height: 36, flex: '0 0 auto', borderRadius: 10, border: `1px solid ${L.border}`, background: L.surfaceSoft, color: L.textSoft, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><X size={16} /></button>}
                 </div>
             </nav>
 
-            <header style={{ textAlign: 'center', padding: isMobile ? '4rem 1rem 2rem' : '6rem 1rem 4rem', maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1 }}>
+            <header className="landing-hero" style={{ textAlign: 'center', padding: isMobile ? '4rem 1rem 2rem' : '6rem 1rem 4rem', maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1 }}>
                 <div style={{ ...revealStyle, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '.4rem 1rem', background: L.surfaceSoft, border: `1px solid ${L.border}`, borderRadius: 99, fontSize: '.8rem', fontWeight: 500, color: L.textSoft, marginBottom: '2rem' }}><span style={{ color: GRN }}>●</span> 100% privé - 100% gratuit</div>
                 <h1 style={{ ...revealStyle, transitionDelay: '100ms', fontSize: 'clamp(2.5rem,5vw,4.5rem)', fontWeight: 900, letterSpacing: '-.04em', lineHeight: 1.1, margin: '0 auto 1.5rem', maxWidth: 1000, color: L.text, textShadow: T.dark ? '0 10px 40px rgba(255,255,255,.08)' : '0 10px 40px rgba(30,30,60,.08)' }}>Tout votre patrimoine réuni.<br />Votre vraie rentabilité révélée.</h1>
                 <p style={{ ...revealStyle, transitionDelay: '200ms', fontSize: 'clamp(1rem,2vw,1.25rem)', color: L.textSoft, maxWidth: 700, margin: '0 auto 2.5rem', lineHeight: 1.6 }}>PEA, cryptos, immobilier... Regroupez tous vos placements au même endroit. Obtenez une vision globale de vos finances en quelques clics, sans jamais que vos données ne quittent votre appareil.</p>
@@ -766,33 +771,36 @@ function WelcomeModal({ onEmpty, canClose, onClose, mode, setMode }) {
                 </div>
             </header>
 
-            <div style={{ maxWidth: 1000, margin: '0 auto 6rem', padding: '0 1rem', perspective: 1000 }}>
-                <div style={{ width: '100%', maxWidth: '100%', background: L.surface, border: `1px solid ${L.border}`, borderRadius: 20, boxShadow: L.shadow, overflow: 'hidden', transform: isMobile ? 'none' : 'rotateX(4deg) scale(.98)' }}>
-                    <div style={{ display: 'flex', gap: 6, padding: '1rem', borderBottom: `1px solid ${L.border}`, background: L.surfaceSoft }}><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#FF5F56' }} /><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#FFBD2E' }} /><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#27C93F' }} /></div>
-                    <div className="landing-demo-grid" style={{ display: 'grid', gridTemplateColumns: '1fr' }}><LandingDemoMockup /></div>
+            <div className="landing-demo-shell" style={{ maxWidth: 1180, margin: '0 auto 6rem', padding: '0 1rem', perspective: 1000 }}>
+                <div className="landing-demo-card" style={{ width: '100%', maxWidth: '100%', background: L.surface, border: `1px solid ${L.border}`, borderRadius: 20, boxShadow: L.shadow, overflow: 'hidden', transform: isMobile ? 'none' : 'rotateX(3deg) scale(.985)' }}>
+                    <div className="landing-demo-windowbar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '1rem', borderBottom: `1px solid ${L.border}`, background: L.surfaceSoft }}>
+                        <div style={{ display: 'flex', gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#FF5F56' }} /><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#FFBD2E' }} /><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#27C93F' }} /></div>
+                        <span style={{ color: L.textFaint, fontSize: '.72rem', fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase' }}>Démo interactive</span>
+                    </div>
+                    <div className="landing-app-preview landing-scrollbar" style={{ maxHeight: 'min(82vh,920px)', overflow: 'auto', WebkitOverflowScrolling: 'touch' }}><LandingDemoMockup /></div>
                 </div>
             </div>
 
-            <section style={{ padding: '6rem 1rem', maxWidth: 1100, margin: '0 auto' }}>
+            <section className="landing-section" style={{ padding: '6rem 1rem', maxWidth: 1100, margin: '0 auto' }}>
                 <div style={{ textAlign: 'center', marginBottom: '4rem' }}><h2 style={{ fontSize: 'clamp(2rem,4vw,2.5rem)', fontWeight: 800, letterSpacing: '-.03em', margin: '0 0 1rem', color: L.text }}>Une intimité totale sur vos finances.</h2><p style={{ fontSize: 'clamp(1rem,2vw,1.25rem)', color: L.textSoft, maxWidth: 700, margin: '0 auto', lineHeight: 1.6 }}>Pas de création de compte. Pas de synchronisation bancaire requise. Vous gardez le contrôle total.</p></div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: '2rem' }}>
+                <div className="landing-trust-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: '2rem' }}>
                     {trust.map(item => <div key={item.title} style={{ textAlign: 'center', padding: '2rem', background: L.surfaceSoft, borderRadius: 20, border: `1px solid ${L.border}` }}><div style={{ width: 56, height: 56, background: L.surfaceSoft, border: `1px solid ${L.border}`, borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', color: VALC }}><item.Icon size={27} /></div><h3 style={{ fontSize: '1.2rem', margin: '0 0 .5rem', color: L.text }}>{item.title}</h3><p style={{ color: L.textSoft, fontSize: '.95rem', margin: 0 }}>{item.text}</p></div>)}
                 </div>
             </section>
 
-            <section style={{ padding: '6rem 1rem', maxWidth: 1100, margin: '0 auto' }}>
+            <section className="landing-section" style={{ padding: '6rem 1rem', maxWidth: 1100, margin: '0 auto' }}>
                 <div style={{ textAlign: 'center', marginBottom: '4rem' }}><h2 style={{ fontSize: 'clamp(2rem,4vw,2.5rem)', fontWeight: 800, letterSpacing: '-.03em', margin: 0, color: L.text }}>Des indicateurs puissants, expliqués simplement.</h2></div>
                 <div className="landing-bento" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gridAutoRows: 'minmax(280px,auto)', gap: '1.5rem' }}>
-                    {features.map(item => <div key={item.title} className={item.cls === 'large' ? 'landing-feature-large' : undefined} style={{ gridColumn: item.cls === 'large' ? 'span 2' : 'auto', background: L.surface, border: `1px solid ${L.border}`, borderRadius: 24, padding: '2.5rem 2rem', position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', minHeight: 280 }}><div style={{ position: 'absolute', top: '2rem', right: '2rem', color: item.color || ACC, background: `${item.color || ACC}1A`, padding: '1rem', borderRadius: 16 }}><item.Icon size={32} /></div><h3 style={{ fontSize: '1.4rem', margin: '0 0 .5rem', position: 'relative', color: L.text }}>{item.title}</h3><p style={{ color: L.textSoft, fontSize: '.95rem', margin: 0, maxWidth: '85%', position: 'relative' }}>{item.text}</p></div>)}
+                    {features.map(item => <div key={item.title} className={`landing-feature-card ${item.cls === 'large' ? 'landing-feature-large' : ''}`} style={{ gridColumn: item.cls === 'large' ? 'span 2' : 'auto', background: L.surface, border: `1px solid ${L.border}`, borderRadius: 24, padding: '2.5rem 2rem', position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', minHeight: 280 }}><div style={{ position: 'absolute', top: '2rem', right: '2rem', color: item.color || ACC, background: `${item.color || ACC}1A`, padding: '1rem', borderRadius: 16 }}><item.Icon size={32} /></div><h3 style={{ fontSize: '1.4rem', margin: '0 0 .5rem', position: 'relative', color: L.text }}>{item.title}</h3><p style={{ color: L.textSoft, fontSize: '.95rem', margin: 0, maxWidth: '85%', position: 'relative' }}>{item.text}</p></div>)}
                 </div>
             </section>
 
-            <section style={{ textAlign: 'center', padding: '6rem 1rem 4rem', maxWidth: 1100, marginLeft: 'auto', marginRight: 'auto' }}>
+            <section className="landing-section" style={{ textAlign: 'center', padding: '6rem 1rem 4rem', maxWidth: 1100, marginLeft: 'auto', marginRight: 'auto' }}>
                 <h2 style={{ fontSize: 'clamp(2rem,4vw,2.5rem)', fontWeight: 800, margin: '0 0 1.5rem', color: L.text }}>Prenez vos finances en main.</h2>
                 <button onClick={openApp} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '1rem 2rem', borderRadius: 12, fontWeight: 600, fontSize: '1.1rem', cursor: 'pointer', background: ACC, color: '#fff', border: 'none', boxShadow: `0 4px 20px ${ACC}66` }}>Commencer maintenant <ArrowUpRight size={20} /></button>
                 <p style={{ color: L.textSoft, fontSize: '.85rem', marginTop: '1.2rem' }}>Gratuit. Sans inscription. Fonctionne instantanément.</p>
             </section>
-            <footer style={{ maxWidth: 1100, margin: '0 auto', padding: '1.5rem 1rem 2.5rem', borderTop: `1px solid ${L.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', color: L.textFaint, fontSize: '.78rem' }}>
+            <footer className="landing-footer" style={{ maxWidth: 1100, margin: '0 auto', padding: '1.5rem 1rem 2.5rem', borderTop: `1px solid ${L.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', color: L.textFaint, fontSize: '.78rem' }}>
                 <span>InvestTrack</span>
                 <span>Vos données restent locales. Pensez à exporter une sauvegarde après vos changements.</span>
             </footer>
