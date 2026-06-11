@@ -575,14 +575,14 @@ function CatInp({ value, onChange, categories, placeholder }) {
         </div>}
     </div>;
 }
-function Btn({ onClick, primary, danger, ghost, style: xs, children }) {
+function Btn({ onClick, primary, danger, ghost, style: xs, children, ...rest }) {
     const T = useT(); const [h, setH] = useState(false);
     let bg, col, brd, sh;
     if (primary) { bg = h ? '#F04060' : ACC; col = '#fff'; brd = 'none'; sh = `0 4px 20px ${ACC}50`; }
     else if (danger) { bg = h ? '#EF4444' : LOSSC; col = '#fff'; brd = 'none'; sh = 'none'; }
     else if (ghost) { bg = 'transparent'; col = T.t2; brd = `1px solid ${T.brd}`; sh = 'none'; }
     else { bg = h ? T.s3 : T.s2; col = T.t1; brd = `1px solid ${T.brd}`; sh = 'none'; }
-    return <button onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)} onClick={onClick} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '.44rem .9rem', borderRadius: 8, border: brd, cursor: 'pointer', fontSize: '.76rem', fontFamily: 'inherit', fontWeight: primary ? 600 : 500, background: bg, color: col, boxShadow: sh, transition: 'all .14s', minHeight: 36, ...(xs || {}) }}>{children}</button>;
+    return <button onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)} onClick={onClick} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '.44rem .9rem', borderRadius: 8, border: brd, cursor: 'pointer', fontSize: '.76rem', fontFamily: 'inherit', fontWeight: primary ? 600 : 500, background: bg, color: col, boxShadow: sh, transition: 'all .14s', minHeight: 36, ...(xs || {}) }} {...rest}>{children}</button>;
 }
 
 // ── Sheet (bottom-sheet mobile / modal desktop) ──
@@ -717,6 +717,29 @@ function ConfirmDel({ msg, onOk, onCancel }) {
         </Sheet>
     );
 }
+function WelcomeModal({ onDemo, onEmpty, onImport }) {
+    const T = useT(); const fileRef = useRef(null);
+    const points = ['Suivez vos poches, apports, retraits et valorisations.', 'Analysez performance, XIRR, Dietz et allocation.', 'Importez ou exportez une sauvegarde JSON locale.'];
+    return (
+        <Sheet title="Bienvenue dans InvestTrack" onClose={onDemo}>
+            <div style={{ display: 'grid', gap: '.95rem' }}>
+                <div style={{ borderRadius: 12, background: T.s2, border: `1px solid ${T.brd}`, padding: '.9rem 1rem' }}>
+                    <div style={{ fontSize: '.82rem', color: T.t1, fontWeight: 700, marginBottom: 6 }}>Choisissez comment démarrer</div>
+                    <div style={{ fontSize: '.76rem', color: T.t2, lineHeight: 1.7 }}>Vos données restent dans le stockage local du navigateur. La démo sert uniquement à explorer l'application.</div>
+                </div>
+                <div style={{ display: 'grid', gap: '.45rem' }}>
+                    {points.map((p, i) => <div key={p} style={{ display: 'flex', gap: 8, color: T.t2, fontSize: '.75rem', lineHeight: 1.55 }}><span style={{ width: 18, height: 18, borderRadius: 6, background: `${ACC}18`, color: ACC, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, flexShrink: 0, fontSize: '.66rem' }}>{i + 1}</span><span>{p}</span></div>)}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 7 }}>
+                    <Btn primary onClick={onDemo} style={{ justifyContent: 'center' }}>Explorer la démo</Btn>
+                    <Btn onClick={() => fileRef.current?.click()} style={{ justifyContent: 'center' }}><Upload size={12} />Importer un fichier JSON</Btn>
+                    <Btn ghost onClick={onEmpty} style={{ justifyContent: 'center' }}>Commencer vierge</Btn>
+                    <input ref={fileRef} type="file" accept=".json" style={{ display: 'none' }} onChange={onImport} />
+                </div>
+            </div>
+        </Sheet>
+    );
+}
 
 // ── Bottom nav (mobile) ──
 function BottomNav({ page, setPage, setSelP, setModal }) {
@@ -758,9 +781,9 @@ function TopBar({ page, selP, setPage, setSelP, mode, setMode, setModal, expJSON
             <header style={{ position: 'sticky', top: 0, zIndex: 50, height: 50, background: T.dark ? 'rgba(10,10,14,0.95)' : T.s1, borderBottom: `1px solid ${T.brd}`, backdropFilter: 'blur(16px)', display: 'flex', alignItems: 'center', padding: '0 1rem', gap: 8 }}>
                 {logo}
                 <div style={{ flex: 1 }} />
-                <button onClick={expJSON} style={{ width: 36, height: 36, borderRadius: 8, border: `1px solid ${T.brd}`, background: 'transparent', color: T.t2, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Download size={15} /></button>
-                <label style={{ width: 36, height: 36, borderRadius: 8, border: `1px solid ${T.brd}`, background: 'transparent', color: T.t2, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Upload size={15} /><input type="file" accept=".json" style={{ display: 'none' }} onChange={impJSON} /></label>
-                <button onClick={() => setMode(m => m === 'dark' ? 'light' : 'dark')} style={{ width: 36, height: 36, borderRadius: 8, border: `1px solid ${T.brd}`, background: 'transparent', color: T.t2, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{mode === 'dark' ? <Sun size={15} /> : <Moon size={15} />}</button>
+                <button title="Exporter" aria-label="Exporter" onClick={expJSON} style={{ width: 36, height: 36, borderRadius: 8, border: `1px solid ${T.brd}`, background: 'transparent', color: T.t2, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Download size={15} /></button>
+                <label title="Importer" aria-label="Importer" style={{ width: 36, height: 36, borderRadius: 8, border: `1px solid ${T.brd}`, background: 'transparent', color: T.t2, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Upload size={15} /><input type="file" accept=".json" style={{ display: 'none' }} onChange={impJSON} /></label>
+                <button title="Changer de thème" aria-label="Changer de thème" onClick={() => setMode(m => m === 'dark' ? 'light' : 'dark')} style={{ width: 36, height: 36, borderRadius: 8, border: `1px solid ${T.brd}`, background: 'transparent', color: T.t2, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{mode === 'dark' ? <Sun size={15} /> : <Moon size={15} />}</button>
             </header>
             <BottomNav page={page} setPage={setPage} setSelP={setSelP} setModal={setModal} />
         </>
@@ -778,7 +801,7 @@ function TopBar({ page, selP, setPage, setSelP, mode, setMode, setModal, expJSON
                 <button onClick={expJSON} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '.36rem .75rem', borderRadius: 7, border: `1px solid ${T.brd}`, background: 'transparent', color: T.t2, cursor: 'pointer', fontSize: '.72rem', minHeight: 36 }}><Download size={11} />Export</button>
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '.36rem .75rem', borderRadius: 7, border: `1px solid ${T.brd}`, background: 'transparent', color: T.t2, cursor: 'pointer', fontSize: '.72rem', minHeight: 36 }}><Upload size={11} />Import<input type="file" accept=".json" style={{ display: 'none' }} onChange={impJSON} /></label>
                 <Btn primary onClick={() => setModal({ type: 'saisie' })} style={{ padding: '.36rem .8rem' }}><Plus size={11} />Saisie</Btn>
-                <button onClick={() => setMode(m => m === 'dark' ? 'light' : 'dark')} style={{ width: 34, height: 34, borderRadius: 8, border: `1px solid ${T.brd}`, background: 'transparent', color: T.t2, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{mode === 'dark' ? <Sun size={14} /> : <Moon size={14} />}</button>
+                <button title="Changer de thème" aria-label="Changer de thème" onClick={() => setMode(m => m === 'dark' ? 'light' : 'dark')} style={{ width: 34, height: 34, borderRadius: 8, border: `1px solid ${T.brd}`, background: 'transparent', color: T.t2, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{mode === 'dark' ? <Sun size={14} /> : <Moon size={14} />}</button>
             </div>
         </header>
     );
@@ -1129,7 +1152,24 @@ function PocheDetail({ poche, txs, vals, onBack, onDelTx, onDelVal, onDelPoche, 
 }
 
 // ── Dashboard ──
-function Dashboard({ pm, gm, ts, vs, ps, setSelP, setModal }) {
+function DemoBanner({ onImport, onEmpty, onKeep }) {
+    const T = useT(); const fileRef = useRef(null);
+    return (
+        <div style={{ border: `1px solid ${AMB}35`, background: T.dark ? `${AMB}12` : `${AMB}0D`, borderRadius: 12, padding: '.7rem .8rem', marginBottom: '.75rem', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 210 }}>
+                <div style={{ color: AMB, fontWeight: 800, fontSize: '.76rem', marginBottom: 2 }}>Vous explorez des données de démonstration.</div>
+                <div style={{ color: T.t2, fontSize: '.7rem' }}>Elles ne seront pas enregistrées tant que vous ne les utilisez pas comme base.</div>
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <Btn ghost onClick={() => fileRef.current?.click()} style={{ minHeight: 32, padding: '.32rem .6rem' }}>Importer</Btn>
+                <Btn ghost onClick={onEmpty} style={{ minHeight: 32, padding: '.32rem .6rem' }}>Commencer vierge</Btn>
+                <Btn primary onClick={onKeep} style={{ minHeight: 32, padding: '.32rem .6rem' }}>Utiliser comme base</Btn>
+                <input ref={fileRef} type="file" accept=".json" style={{ display: 'none' }} onChange={onImport} />
+            </div>
+        </div>
+    );
+}
+function Dashboard({ pm, gm, ts, vs, ps, setSelP, setModal, dataMode, impJSON, startEmpty, useDemoAsBase }) {
     const T = useT(); const { isMobile, isTablet } = useBreakpoint();
     const { th, thR, td, tdR } = useTS();
     const [sort, setSort] = useState({ key: 'valActu', dir: 'desc' });
@@ -1149,6 +1189,7 @@ function Dashboard({ pm, gm, ts, vs, ps, setSelP, setModal }) {
     };
     return (
         <div>
+            {dataMode === 'demo' && <DemoBanner onImport={impJSON} onEmpty={startEmpty} onKeep={useDemoAsBase} />}
             <HeroBanner gm={gm} ps={ps} vs={vs} ts={ts} />
             <SC title={`Contrôle des données (${warnings.length})`} style={{ marginBottom: '.75rem' }}>
                 {warnings.length ? <div style={{ display: 'grid', gap: '.45rem' }}>{warnings.map((w, i) => <div key={i} style={{ fontSize: '.72rem', color: w.level === 'error' ? LOSSC : w.level === 'warn' ? AMB : T.t2, background: w.level === 'error' ? `${LOSSC}10` : w.level === 'warn' ? `${AMB}10` : T.s2, border: `1px solid ${w.level === 'error' ? LOSSC + '30' : w.level === 'warn' ? AMB + '30' : T.brd}`, borderRadius: 8, padding: '.45rem .65rem' }}>{w.text}</div>)}</div> : <div style={{ color: GRN, fontSize: '.75rem' }}>Aucune anomalie évidente détectée.</div>}
@@ -1237,18 +1278,33 @@ export default function App() {
     const [ts, setTs] = useState([]);
     const [vs, setVs] = useState([]);
     const [ready, setReady] = useState(false);
+    const [dataMode, setDataMode] = useState('empty');
+    const [showWelcome, setShowWelcome] = useState(false);
     const [modal, setModal] = useState(null);
     const T = useMemo(() => mode === 'dark' ? mkDark() : mkLight(), [mode]);
     const { isMobile } = useBreakpoint();
 
     useEffect(() => {
         (async () => {
-            try { const r = await window.storage.get('inv_v9'); if (r) { const d = JSON.parse(r.value); setPs(d.p || D_P); setTs(d.t || D_T); setVs(d.v || D_V); } else { setPs(D_P); setTs(D_T); setVs(D_V); } }
-            catch { setPs(D_P); setTs(D_T); setVs(D_V); }
+            try {
+                const r = await window.storage.get('inv_v9');
+                if (r) {
+                    const d = JSON.parse(r.value);
+                    const hasSavedShape = ['p', 't', 'v', 'poches', 'transactions', 'valorisations'].some(k => Array.isArray(d[k]));
+                    if (!hasSavedShape) throw new Error('Format non reconnu');
+                    const nextPs = Array.isArray(d.p) ? d.p : Array.isArray(d.poches) ? d.poches : [];
+                    const nextTs = Array.isArray(d.t) ? d.t : Array.isArray(d.transactions) ? d.transactions : [];
+                    const nextVs = Array.isArray(d.v) ? d.v : Array.isArray(d.valorisations) ? d.valorisations : [];
+                    setPs(nextPs); setTs(nextTs); setVs(nextVs); setDataMode('saved'); setShowWelcome(false);
+                } else {
+                    setPs([]); setTs([]); setVs([]); setDataMode('empty'); setShowWelcome(true);
+                }
+            }
+            catch { setPs([]); setTs([]); setVs([]); setDataMode('empty'); setShowWelcome(true); }
             setReady(true);
         })();
     }, []);
-    useEffect(() => { if (!ready) return; window.storage.set('inv_v9', JSON.stringify({ p: ps, t: ts, v: vs })).catch(() => { }); }, [ps, ts, vs, ready]);
+    useEffect(() => { if (!ready || showWelcome || dataMode === 'demo') return; window.storage.set('inv_v9', JSON.stringify({ p: ps, t: ts, v: vs })).catch(() => { }); }, [ps, ts, vs, ready, showWelcome, dataMode]);
 
     const pm = useMemo(() => ps.map(p => ({ ...p, ...getPocheMetrics(p.id, ts, vs) })), [ps, ts, vs]);
     const categories = useMemo(() => [...new Set(ps.map(p => p.categorie?.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr-FR')), [ps]);
@@ -1259,16 +1315,22 @@ export default function App() {
         return { tv, tc, tg: pm.reduce((s, p) => s + p.gainLatent, 0), td, tf, latent, realised, xirr: xCFs.length >= 2 ? calcXIRR(xCFs) : null };
     }, [pm, ps, ts, vs]);
 
+    const markPersonal = () => { setDataMode('saved'); setShowWelcome(false); };
+    const loadDemo = () => { setPs(D_P); setTs(D_T); setVs(D_V); setDataMode('demo'); setShowWelcome(false); setSelP(null); setPage('dashboard'); };
+    const startEmpty = () => { setPs([]); setTs([]); setVs([]); setDataMode('empty'); setShowWelcome(false); setSelP(null); setPage('dashboard'); };
+    const useDemoAsBase = () => { setDataMode('saved'); setShowWelcome(false); };
+
     const handleSaisie = (pocheId, txData, valeur, date, note = '') => {
+        markPersonal();
         if (txData) setTs(p => [...p, { id: uid(), type: txData.type, montant: txData.montant, timestamp: date, pocheId, commentaire: txData.commentaire || note }]);
         if (valeur != null) setVs(p => [...p, { id: uid(), pocheId, valeur, date, commentaire: note }]);
         setModal(null);
     };
-    const addP = p => { setPs(pr => [...pr, { ...p, id: uid(), createdAt: TODAY }]); setModal(null); };
-    const delP = id => { setPs(p => p.filter(x => x.id !== id)); setTs(p => p.filter(t => t.pocheId !== id)); setVs(p => p.filter(v => v.pocheId !== id)); };
-    const updateP = (id, patch) => setPs(p => p.map(x => x.id === id ? { ...x, ...patch } : x));
-    const delTx = id => setTs(p => p.filter(t => t.id !== id));
-    const delV = id => setVs(p => p.filter(v => v.id !== id));
+    const addP = p => { markPersonal(); setPs(pr => [...pr, { ...p, id: uid(), createdAt: TODAY }]); setModal(null); };
+    const delP = id => { markPersonal(); setPs(p => p.filter(x => x.id !== id)); setTs(p => p.filter(t => t.pocheId !== id)); setVs(p => p.filter(v => v.pocheId !== id)); };
+    const updateP = (id, patch) => { markPersonal(); setPs(p => p.map(x => x.id === id ? { ...x, ...patch } : x)); };
+    const delTx = id => { markPersonal(); setTs(p => p.filter(t => t.id !== id)); };
+    const delV = id => { markPersonal(); setVs(p => p.filter(v => v.id !== id)); };
 
     const expJSON = () => {
         try {
@@ -1282,7 +1344,14 @@ export default function App() {
         const f = e.target.files[0]; if (!f) return;
         const r = new FileReader();
         r.onload = ev => {
-            try { const d = JSON.parse(ev.target.result); if (!d.poches && !d.transactions && !d.valorisations) throw new Error('Format non reconnu'); if (d.poches) setPs(d.poches); if (d.transactions) setTs(d.transactions); if (d.valorisations) setVs(d.valorisations); }
+            try {
+                const d = JSON.parse(ev.target.result);
+                const nextPs = Array.isArray(d.poches) ? d.poches : Array.isArray(d.p) ? d.p : null;
+                const nextTs = Array.isArray(d.transactions) ? d.transactions : Array.isArray(d.t) ? d.t : null;
+                const nextVs = Array.isArray(d.valorisations) ? d.valorisations : Array.isArray(d.v) ? d.v : null;
+                if (!nextPs && !nextTs && !nextVs) throw new Error('Format non reconnu');
+                setPs(nextPs || []); setTs(nextTs || []); setVs(nextVs || []); setDataMode('saved'); setShowWelcome(false); setSelP(null); setPage('dashboard');
+            }
             catch (err) { alert('Fichier invalide : ' + err.message); }
         };
         r.readAsText(f); e.target.value = '';
@@ -1311,12 +1380,13 @@ export default function App() {
                     {detailPoche
                         ? <PocheDetail poche={detailPoche} txs={ts} vals={vs} onBack={() => setSelP(null)} onDelTx={delTx} onDelVal={delV} onDelPoche={delP} setModal={setModal} />
                         : page === 'dashboard'
-                            ? <Dashboard pm={pm} gm={gm} ts={ts} vs={vs} ps={ps} setSelP={setSelP} setModal={setModal} />
+                            ? <Dashboard pm={pm} gm={gm} ts={ts} vs={vs} ps={ps} setSelP={setSelP} setModal={setModal} dataMode={dataMode} impJSON={impJSON} startEmpty={startEmpty} useDemoAsBase={useDemoAsBase} />
                             : <PochesPage pm={pm} vs={vs} ts={ts} gm={gm} setSelP={setSelP} setModal={setModal} />
                     }
                 </main>
             </div>
             {renderModal()}
+            {showWelcome && <WelcomeModal onDemo={loadDemo} onEmpty={startEmpty} onImport={impJSON} />}
         </TC.Provider>
     );
 }
