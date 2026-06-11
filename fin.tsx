@@ -140,31 +140,6 @@ function perfAtDate(pids, txs, date, value) {
     const sm = type => pt.filter(t => t.type === type).reduce((s, t) => s + t.montant, 0);
     return value - sm('apport') + sm('retrait') + sm('dividende') - sm('frais');
 }
-function getDataWarnings(ps, txs, vals) {
-    const today = new Date(TODAY);
-    return ps.flatMap(p => {
-        const pt = txs.filter(t => t.pocheId === p.id).sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-        const pv = vals.filter(v => v.pocheId === p.id).sort((a, b) => a.date.localeCompare(b.date));
-        const capital = capitalAtDate([p.id], txs, TODAY);
-        const warnings = [];
-        if (!pv.length) warnings.push({ level: 'warn', text: `${p.nom} : aucune valorisation saisie.` });
-        if (capital < -0.01) warnings.push({ level: 'error', text: `${p.nom} : capital net négatif, vérifiez les retraits.` });
-        if (pt.length && pv.length && pv[0].date < pt[0].timestamp) warnings.push({ level: 'warn', text: `${p.nom} : valorisation antérieure au premier flux.` });
-        if (pv.length) {
-            const age = (today - new Date(pv[pv.length - 1].date)) / 86400000;
-            if (age > 180) warnings.push({ level: 'info', text: `${p.nom} : dernière valorisation il y a ${Math.round(age)} jours.` });
-        }
-        for (let i = 1; i < pv.length; i++) {
-            const prev = pv[i - 1], cur = pv[i];
-            const perf = perfAtDate([p.id], txs, cur.date, cur.valeur) - perfAtDate([p.id], txs, prev.date, prev.valeur);
-            const base = Math.max(Math.abs(prev.valeur), 1);
-            const hasNearbyFlow = pt.some(t => Math.abs(new Date(t.timestamp) - new Date(cur.date)) / 86400000 <= 10);
-            if (Math.abs(perf / base) > 0.4 && !hasNearbyFlow) warnings.push({ level: 'warn', text: `${p.nom} : forte variation hors flux autour du ${fDt(cur.date)}.` });
-        }
-        return warnings;
-    }).slice(0, 8);
-}
-
 // ── Info modal ──
 function InfoModal({ onClose, title, lines }) {
     const T = useT();
@@ -729,7 +704,7 @@ function LandingDemoMockup() {
     }, [pm, ps, ts, vs]);
     const noop = () => { };
     return (
-        <div style={{ background: T.dark ? 'radial-gradient(ellipse 60% 50% at 8% 92%,rgba(232,54,74,.07) 0%,transparent 50%),#0A0A0E' : T.bg, color: T.t1, fontFamily: 'system-ui,-apple-system,sans-serif', fontSize: 13, lineHeight: 1.5, maxHeight: isMobile ? 620 : 760, overflow: 'hidden' }}>
+        <div style={{ background: T.dark ? 'radial-gradient(ellipse 60% 50% at 8% 92%,rgba(232,54,74,.07) 0%,transparent 50%),#0A0A0E' : T.bg, color: T.t1, fontFamily: 'system-ui,-apple-system,sans-serif', fontSize: 13, lineHeight: 1.5, overflow: 'visible' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '.55rem 1rem', borderBottom: `1px solid ${T.brd}`, background: T.dark ? 'rgba(10,10,14,.95)' : T.s1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}><div style={{ width: 28, height: 28, borderRadius: 8, background: `linear-gradient(135deg,${ACC},#FF6B6B)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.6rem', fontWeight: 900, color: '#fff', flexShrink: 0 }}>IT</div><strong style={{ color: T.t1, fontSize: '.82rem' }}>InvestTrack</strong></div>
                 {!isMobile && <div style={{ display: 'inline-flex', background: T.s2, borderRadius: 10, padding: 3, gap: 2, marginLeft: 8 }}><span style={{ padding: '.3rem 1rem', borderRadius: 8, background: T.s1, color: T.t1, fontSize: '.77rem', fontWeight: 700 }}>Dashboard</span><span style={{ padding: '.3rem 1rem', borderRadius: 8, color: T.t2, fontSize: '.77rem' }}>Poches</span></div>}
@@ -784,7 +759,7 @@ function WelcomeModal({ onEmpty, canClose, onClose, mode, setMode }) {
 
             <header style={{ textAlign: 'center', padding: isMobile ? '4rem 1rem 2rem' : '6rem 1rem 4rem', maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1 }}>
                 <div style={{ ...revealStyle, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '.4rem 1rem', background: L.surfaceSoft, border: `1px solid ${L.border}`, borderRadius: 99, fontSize: '.8rem', fontWeight: 500, color: L.textSoft, marginBottom: '2rem' }}><span style={{ color: GRN }}>●</span> 100% privé - 100% gratuit</div>
-                <h1 style={{ ...revealStyle, transitionDelay: '100ms', fontSize: 'clamp(2.5rem,5vw,4.5rem)', fontWeight: 900, letterSpacing: '-.04em', lineHeight: 1.1, margin: '0 auto 1.5rem', maxWidth: 1000, background: L.hero, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>Tout votre patrimoine réuni.<br />Votre vraie rentabilité révélée.</h1>
+                <h1 style={{ ...revealStyle, transitionDelay: '100ms', fontSize: 'clamp(2.5rem,5vw,4.5rem)', fontWeight: 900, letterSpacing: '-.04em', lineHeight: 1.1, margin: '0 auto 1.5rem', maxWidth: 1000, color: L.text, textShadow: T.dark ? '0 10px 40px rgba(255,255,255,.08)' : '0 10px 40px rgba(30,30,60,.08)' }}>Tout votre patrimoine réuni.<br />Votre vraie rentabilité révélée.</h1>
                 <p style={{ ...revealStyle, transitionDelay: '200ms', fontSize: 'clamp(1rem,2vw,1.25rem)', color: L.textSoft, maxWidth: 700, margin: '0 auto 2.5rem', lineHeight: 1.6 }}>PEA, cryptos, immobilier... Regroupez tous vos placements au même endroit. Obtenez une vision globale de vos finances en quelques clics, sans jamais que vos données ne quittent votre appareil.</p>
                 <div style={{ ...revealStyle, transitionDelay: '300ms', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem', flexWrap: 'wrap' }}>
                     <button onClick={openApp} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '.75rem 1.5rem', borderRadius: 12, fontWeight: 600, fontSize: '.95rem', cursor: 'pointer', background: ACC, color: '#fff', border: 'none', boxShadow: `0 4px 20px ${ACC}66` }}>Ouvrir l'application</button>
@@ -1260,7 +1235,6 @@ function Dashboard({ pm, gm, ts, vs, ps, setSelP, setModal, dataMode, impJSON, s
     const T = useT(); const { isMobile, isTablet } = useBreakpoint();
     const { th, thR, td, tdR } = useTS();
     const [sort, setSort] = useState({ key: 'valActu', dir: 'desc' });
-    const warnings = useMemo(() => getDataWarnings(ps, ts, vs), [ps, ts, vs]);
     const sortedPm = useMemo(() => {
         const val = (p, key) => key === 'nom' ? (p.nom || '').toLocaleLowerCase('fr-FR') : key === 'gainPct' ? (p.capital > 0 ? p.gainLatent / p.capital : -Infinity) : p[key] ?? -Infinity;
         return [...pm].sort((a, b) => {
@@ -1278,9 +1252,6 @@ function Dashboard({ pm, gm, ts, vs, ps, setSelP, setModal, dataMode, impJSON, s
         <div>
             {dataMode === 'demo' && <DemoBanner onImport={impJSON} onEmpty={startEmpty} onKeep={useDemoAsBase} />}
             <HeroBanner gm={gm} ps={ps} vs={vs} ts={ts} />
-            <SC title={`Contrôle des données (${warnings.length})`} style={{ marginBottom: '.75rem' }}>
-                {warnings.length ? <div style={{ display: 'grid', gap: '.45rem' }}>{warnings.map((w, i) => <div key={i} style={{ fontSize: '.72rem', color: w.level === 'error' ? LOSSC : w.level === 'warn' ? AMB : T.t2, background: w.level === 'error' ? `${LOSSC}10` : w.level === 'warn' ? `${AMB}10` : T.s2, border: `1px solid ${w.level === 'error' ? LOSSC + '30' : w.level === 'warn' ? AMB + '30' : T.brd}`, borderRadius: 8, padding: '.45rem .65rem' }}>{w.text}</div>)}</div> : <div style={{ color: GRN, fontSize: '.75rem' }}>Aucune anomalie évidente détectée.</div>}
-            </SC>
             <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '5fr 3fr', gap: '.75rem', marginBottom: '.75rem' }}>
                 <SC title="Résumé par poche" noPad>
                     <div style={{ padding: '0 1.1rem 1rem', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
