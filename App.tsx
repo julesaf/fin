@@ -628,8 +628,16 @@ function WelcomeModal({ onEmpty, canClose, onClose, mode, setMode }) {
     const [demoProgress, setDemoProgress] = useState(0);
     const [intro, setIntro] = useState(0);
     const INTRO_PHASE = 0.1;
-    const EASING_FACTOR = 0.24;
-    const DEMO_SCROLL_GAIN = 1.32;
+    const EASING_FACTOR = 0.28;
+    const DEMO_SCROLL_GAIN = 1.45;
+
+    const forwardPreviewWheel = e => {
+        if (isMobile) return;
+        const scroller = landingRef.current;
+        if (!scroller) return;
+        e.preventDefault();
+        scroller.scrollTop += e.deltaY;
+    };
 
     useEffect(() => {
         const scroller = landingRef.current;
@@ -719,7 +727,7 @@ function WelcomeModal({ onEmpty, canClose, onClose, mode, setMode }) {
             <style>{`
                 .landing-scrollbar{scrollbar-width:thin;scrollbar-color:${ACC}55 transparent}
                 .landing-scrollbar::-webkit-scrollbar{width:8px;height:8px}.landing-scrollbar::-webkit-scrollbar-thumb{background:${ACC}55;border-radius:99px}.landing-scrollbar::-webkit-scrollbar-track{background:transparent}
-                .landing-demo-pin{position:relative;height:250vh}.landing-demo-sticky{position:sticky;top:0;height:100vh;display:flex;align-items:center;justify-content:center;padding:0 1rem;box-sizing:border-box}.landing-demo-shell{width:100%;max-width:1180px;perspective:1400px;position:relative}
+                .landing-demo-pin{position:relative;height:220vh}.landing-demo-sticky{position:sticky;top:0;height:100vh;display:flex;align-items:center;justify-content:center;padding:0 1rem;box-sizing:border-box}.landing-demo-shell{width:100%;max-width:1180px;perspective:1400px;position:relative}
                 @media (max-width: 900px){.landing-demo-pin{height:auto;margin-bottom:3.5rem}.landing-demo-sticky{position:relative;top:auto;height:auto;padding:0 .75rem}.landing-demo-shell{max-width:calc(100vw - 1.5rem)!important}.landing-demo-card{transform:none!important;opacity:1!important;border-radius:16px!important}.landing-app-preview{max-height:78vh!important}.landing-section{padding-top:4rem!important;padding-bottom:4rem!important}.landing-trust-grid{gap:1rem!important}.landing-bento{grid-template-columns:1fr!important}.landing-feature-large{grid-column:auto!important}.landing-feature-card{min-height:220px!important;padding:2rem 1.5rem!important}.landing-feature-card p{max-width:100%!important}.landing-demo-side{display:none!important}}
                 @media (max-width: 640px){.landing-hero{padding:3.25rem .9rem 2rem!important}.landing-hero h1{font-size:clamp(2.35rem,14vw,3.55rem)!important;line-height:1.02!important}.landing-hero p{font-size:1rem!important}.landing-nav{padding:.85rem 1rem!important}.landing-open-label{display:none!important}.landing-app-preview{max-height:72vh!important}.landing-demo-windowbar{padding:.7rem!important}.landing-section{padding-left:.9rem!important;padding-right:.9rem!important}.landing-footer{justify-content:center!important;text-align:center!important}}
                 @media (max-width: 430px){.landing-brand-text{display:none!important}.landing-app-preview{max-height:68vh!important}.landing-demo-shell{padding:0 .6rem!important;max-width:100vw!important}.landing-feature-card{min-height:200px!important}}
@@ -756,7 +764,7 @@ function WelcomeModal({ onEmpty, canClose, onClose, mode, setMode }) {
                                 </div>
                             </div>
                             <div style={{ height: 3, background: T.dark ? 'rgba(255,255,255,.05)' : 'rgba(10,10,20,.06)' }}><div style={{ width: `${demoProgress * 100}%`, height: '100%', background: `linear-gradient(90deg,${ACC},#FF6B6B)`, boxShadow: `0 0 ${12 + demoProgress * 12}px ${ACC}88` }} /></div>
-                            <div ref={demoPreviewRef} className="landing-app-preview landing-scrollbar" style={{ maxHeight: 'min(82vh,920px)', overflow: 'hidden', overscrollBehavior: 'contain', transform: isMobile ? 'none' : `translateY(-${previewParallax}px)`, willChange: 'transform', boxShadow: isMobile ? undefined : `0 ${previewShadow}px 80px rgba(0,0,0,${T.dark ? 0.32 : 0.12}) inset` }}><LandingDemoMockup /></div>
+                            <div ref={demoPreviewRef} onWheelCapture={forwardPreviewWheel} className="landing-app-preview landing-scrollbar" style={{ maxHeight: 'min(82vh,920px)', overflow: 'hidden', overscrollBehavior: 'contain', transform: isMobile ? 'none' : `translateY(-${previewParallax}px)`, willChange: 'transform', boxShadow: isMobile ? undefined : `0 ${previewShadow}px 80px rgba(0,0,0,${T.dark ? 0.32 : 0.12}) inset` }}><LandingDemoMockup /></div>
                         </div>
                     </div>
                 </div>
