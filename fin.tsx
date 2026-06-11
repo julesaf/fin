@@ -718,69 +718,85 @@ function ConfirmDel({ msg, onOk, onCancel }) {
     );
 }
 function LandingDemoMockup() {
+    const T = useT();
     const { isMobile } = useBreakpoint();
-    const demoPm = D_P.map(p => ({ ...p, ...getPocheMetrics(p.id, D_T, D_V) }));
+    const ink = T.dark ? '#EEEEFF' : '#0A0A14';
+    const muted = T.dark ? '#8080A8' : '#606080';
+    const panel = T.dark ? 'rgba(255,255,255,0.025)' : 'rgba(255,255,255,0.8)';
+    const panel2 = T.dark ? '#15151C' : '#FFFFFF';
+    const border = T.dark ? 'rgba(255,255,255,0.08)' : 'rgba(10,10,20,0.08)';
+    const grid = T.dark ? 'rgba(255,255,255,.06)' : 'rgba(10,10,20,.07)';
+    const demoPm = [
+        { id: 'pea', nom: 'PEA', couleur: ACC, capital: 16500, valActu: 18420, lastVal: 'Avr. 2026' },
+        { id: 'crypto', nom: 'Crypto', couleur: AMB, capital: 7200, valActu: 8120, lastVal: 'Avr. 2026' },
+        { id: 'immo', nom: 'Immobilier', couleur: GRN, capital: 22000, valActu: 23850, lastVal: 'Mars 2026' },
+    ].map(p => ({ ...p, perf: p.valActu - p.capital, perfPct: p.capital > 0 ? (p.valActu - p.capital) / p.capital : null }));
+    const chart = [
+        { date: '2024-01', value: 14100, capital: 13500 },
+        { date: '2024-04', value: 18900, capital: 18500 },
+        { date: '2024-08', value: 24700, capital: 24000 },
+        { date: '2024-12', value: 31200, capital: 30000 },
+        { date: '2025-04', value: 36500, capital: 35200 },
+        { date: '2025-08', value: 42100, capital: 40000 },
+        { date: '2025-12', value: 47300, capital: 43800 },
+        { date: '2026-04', value: 50390, capital: 45700 },
+    ].map(p => ({ ...p, perf: p.value - p.capital, pct: p.capital > 0 ? (p.value - p.capital) / p.capital : null }));
     const totalValue = demoPm.reduce((s, p) => s + p.valActu, 0);
     const totalCapital = demoPm.reduce((s, p) => s + p.capital, 0);
-    const totalGain = demoPm.reduce((s, p) => s + p.gainLatent, 0);
+    const totalGain = totalValue - totalCapital;
     const gainPct = totalCapital > 0 ? totalGain / totalCapital : null;
-    const chart = [...new Set(D_V.map(v => v.date))].sort().map(d => {
-        const value = D_P.reduce((s, p) => {
-            const last = D_V.filter(v => v.pocheId === p.id && v.date <= d).sort((a, b) => b.date.localeCompare(a.date))[0];
-            return s + (last ? last.valeur : 0);
-        }, 0);
-        const capital = capitalAtDate(D_P.map(p => p.id), D_T, d);
-        const perf = perfAtDate(D_P.map(p => p.id), D_T, d, value);
-        return { date: d.slice(0, 7), value, capital, perf };
-    });
-    const lastTxs = [...D_T].sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, 4);
     return (
-        <div style={{ padding: 'clamp(1rem,3vw,2rem)', background: 'radial-gradient(circle at top, rgba(255,255,255,0.035) 0%, transparent 70%)', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0,1.2fr) minmax(210px,.8fr)', gap: 18, minHeight: isMobile ? 0 : 420 }}>
+        <div style={{ padding: 'clamp(1rem,3vw,2rem)', background: T.dark ? 'radial-gradient(circle at top, rgba(255,255,255,0.035) 0%, transparent 70%)' : 'radial-gradient(circle at top, rgba(232,54,74,0.06) 0%, transparent 70%)', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0,1.24fr) minmax(230px,.76fr)', gap: 18, minHeight: isMobile ? 0 : 430 }}>
             <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 15 }}>
                 <div>
-                    <div style={{ fontSize: '.68rem', color: '#8080A8', textTransform: 'uppercase', letterSpacing: '.1em', fontWeight: 700, marginBottom: 6 }}>Portefeuille total</div>
-                    <div style={{ fontSize: 'clamp(2rem,5vw,3.5rem)', fontWeight: 850, lineHeight: 1, letterSpacing: '-.04em' }}>{fEUR(totalValue)}</div>
+                    <div style={{ fontSize: '.68rem', color: muted, textTransform: 'uppercase', letterSpacing: '.1em', fontWeight: 700, marginBottom: 6 }}>Portefeuille total</div>
+                    <div style={{ fontSize: 'clamp(2rem,5vw,3.5rem)', fontWeight: 850, lineHeight: 1, letterSpacing: '-.04em', color: ink }}>{fEUR(totalValue)}</div>
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 9 }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.05)', padding: '6px 12px', borderRadius: 8, fontSize: '.78rem', border: '1px solid rgba(255,255,255,0.08)' }}>Rendement <strong style={{ color: GRN }}>{fPctS(gainPct)}</strong></span>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.05)', padding: '6px 12px', borderRadius: 8, fontSize: '.78rem', border: '1px solid rgba(255,255,255,0.08)' }}>Capital <strong>{fEUR(totalCapital)}</strong></span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: panel, color: ink, padding: '6px 12px', borderRadius: 8, fontSize: '.78rem', border: `1px solid ${border}` }}>Performance <strong style={{ color: GRN }}>{fPctS(gainPct)}</strong></span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: panel, color: ink, padding: '6px 12px', borderRadius: 8, fontSize: '.78rem', border: `1px solid ${border}` }}>Capital net <strong>{fEUR(totalCapital)}</strong></span>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: `${GRN}12`, color: GRN, padding: '6px 12px', borderRadius: 8, fontSize: '.78rem', border: `1px solid ${GRN}2E` }}>Gain {fEURS(totalGain)}</span>
                 </div>
-                <div style={{ flex: 1, minHeight: 190, borderRadius: 14, border: '1px solid rgba(56,189,248,.18)', background: 'linear-gradient(180deg, rgba(56,189,248,0.08) 0%, rgba(56,189,248,0.01) 100%)', overflow: 'hidden' }}>
+                <div style={{ flex: 1, minHeight: 205, borderRadius: 14, border: `1px solid ${VALC}2E`, background: T.dark ? 'linear-gradient(180deg, rgba(56,189,248,0.08) 0%, rgba(56,189,248,0.01) 100%)' : 'linear-gradient(180deg, rgba(56,189,248,0.12) 0%, rgba(56,189,248,0.02) 100%)', overflow: 'hidden' }}>
                     <ResponsiveContainer width="100%" height="100%">
                         <ComposedChart data={chart} margin={{ top: 22, right: 12, left: -12, bottom: 0 }}>
                             <defs><linearGradient id="landingDemoFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={VALC} stopOpacity={0.28} /><stop offset="100%" stopColor={VALC} stopOpacity={0.02} /></linearGradient></defs>
-                            <CartesianGrid stroke="rgba(255,255,255,.06)" vertical={false} />
-                            <XAxis dataKey="date" tick={{ fill: '#8080A8', fontSize: 10 }} axisLine={false} tickLine={false} minTickGap={16} />
+                            <CartesianGrid stroke={grid} vertical={false} />
+                            <XAxis dataKey="date" tick={{ fill: muted, fontSize: 10 }} axisLine={false} tickLine={false} minTickGap={16} />
                             <YAxis hide domain={[0, 'dataMax + 2500']} />
-                            <RT contentStyle={{ background: '#15151C', border: '1px solid rgba(255,255,255,.12)', borderRadius: 10, color: '#EEEEFF', fontSize: '.75rem' }} formatter={v => fEUR(v)} />
+                            <RT contentStyle={{ background: panel2, border: `1px solid ${border}`, borderRadius: 10, color: ink, fontSize: '.75rem' }} formatter={v => fEUR(v)} />
                             <Area type="monotone" dataKey="value" fill="url(#landingDemoFill)" stroke={VALC} strokeWidth={2.4} dot={false} />
-                            <Line type="monotone" dataKey="capital" stroke="#F8FAFC" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
+                            <Line type="monotone" dataKey="capital" stroke={T.dark ? '#F8FAFC' : '#111827'} strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
                         </ComposedChart>
                     </ResponsiveContainer>
                 </div>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,1fr)', gap: 10 }}>
+                    {[
+                        ['Apports cumulés', fEUR(48200)],
+                        ['Retraits cumulés', fEUR(2500)],
+                        ['Dernière valorisation', 'Avr. 2026'],
+                    ].map(([label, value]) => <div key={label} style={{ border: `1px solid ${border}`, background: panel, borderRadius: 12, padding: '.75rem' }}><div style={{ color: muted, fontSize: '.63rem', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 800 }}>{label}</div><div style={{ color: ink, fontSize: '.94rem', fontWeight: 850, marginTop: 3 }}>{value}</div></div>)}
+                </div>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
-                <div style={{ border: '1px solid rgba(255,255,255,.08)', borderRadius: 14, padding: 13, background: 'rgba(255,255,255,.025)' }}>
-                    <div style={{ color: '#8080A8', fontSize: '.66rem', textTransform: 'uppercase', letterSpacing: '.09em', fontWeight: 800, marginBottom: 10 }}>Répartition</div>
+                <div style={{ border: `1px solid ${border}`, borderRadius: 14, padding: 13, background: panel }}>
+                    <div style={{ color: muted, fontSize: '.66rem', textTransform: 'uppercase', letterSpacing: '.09em', fontWeight: 800, marginBottom: 10 }}>Répartition</div>
                     <div style={{ display: 'grid', gap: 10 }}>
                         {demoPm.map(p => (
                             <div key={p.id}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: '.76rem', marginBottom: 5 }}><span>{p.nom}</span><strong>{Math.round((p.valActu / totalValue) * 100)}%</strong></div>
-                                <div style={{ height: 6, borderRadius: 99, background: 'rgba(255,255,255,.07)', overflow: 'hidden' }}><div style={{ width: `${(p.valActu / totalValue) * 100}%`, height: '100%', background: p.couleur, borderRadius: 99 }} /></div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, color: ink, fontSize: '.76rem', marginBottom: 5 }}><span>{p.nom}</span><strong>{Math.round((p.valActu / totalValue) * 100)}%</strong></div>
+                                <div style={{ height: 6, borderRadius: 99, background: T.dark ? 'rgba(255,255,255,.07)' : 'rgba(10,10,20,.08)', overflow: 'hidden' }}><div style={{ width: `${(p.valActu / totalValue) * 100}%`, height: '100%', background: p.couleur, borderRadius: 99 }} /></div>
                             </div>
                         ))}
                     </div>
                 </div>
-                <div style={{ border: '1px solid rgba(255,255,255,.08)', borderRadius: 14, padding: 13, background: 'rgba(255,255,255,.025)' }}>
-                    <div style={{ color: '#8080A8', fontSize: '.66rem', textTransform: 'uppercase', letterSpacing: '.09em', fontWeight: 800, marginBottom: 10 }}>Derniers mouvements</div>
-                    <div style={{ display: 'grid', gap: 8 }}>
-                        {lastTxs.map(t => (
-                            <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, fontSize: '.74rem' }}>
-                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 }}><Dot c={txC(t.type)} sz={6} />{txL(t.type)}</span>
-                                <strong style={{ color: t.type === 'retrait' || t.type === 'frais' ? LOSSC : GRN, fontVariantNumeric: 'tabular-nums' }}>{t.type === 'retrait' || t.type === 'frais' ? '-' : '+'}{fEUR(t.montant)}</strong>
-                            </div>
-                        ))}
+                <div style={{ border: `1px solid ${border}`, borderRadius: 14, padding: 13, background: panel }}>
+                    <div style={{ color: muted, fontSize: '.66rem', textTransform: 'uppercase', letterSpacing: '.09em', fontWeight: 800, marginBottom: 10 }}>Performance par poche</div>
+                    <div style={{ display: 'grid', gap: 9 }}>
+                        {demoPm.map(p => <div key={p.id} style={{ display: 'grid', gap: 4 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, color: ink, fontSize: '.75rem' }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Dot c={p.couleur} sz={6} />{p.nom}</span><strong style={{ color: gc(p.perf) }}>{fPctS(p.perfPct)}</strong></div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, color: muted, fontSize: '.68rem' }}><span>{p.lastVal}</span><span>{fEURS(p.perf)}</span></div>
+                        </div>)}
                     </div>
                 </div>
             </div>
@@ -788,10 +804,21 @@ function LandingDemoMockup() {
     );
 }
 
-function WelcomeModal({ onEmpty, onImport, canClose, onClose }) {
-    const { isMobile } = useBreakpoint(); const fileRef = useRef(null);
+function WelcomeModal({ onEmpty, canClose, onClose, mode, setMode }) {
+    const T = useT(); const { isMobile } = useBreakpoint();
     const revealStyle = { opacity: 1, transform: 'translateY(0)', transition: 'all .8s cubic-bezier(.2,.8,.2,1)' };
     const openApp = () => canClose ? onClose() : onEmpty();
+    const L = {
+        bg: T.dark ? '#0A0A0E' : '#F7F6FC',
+        surface: T.dark ? '#15151C' : '#FFFFFF',
+        surfaceSoft: T.dark ? 'rgba(255,255,255,.03)' : 'rgba(10,10,20,.035)',
+        border: T.dark ? 'rgba(255,255,255,.08)' : 'rgba(10,10,20,.08)',
+        text: T.dark ? '#EEEEFF' : '#0A0A14',
+        textSoft: T.dark ? '#8080A8' : '#606080',
+        textFaint: T.dark ? '#565678' : '#8585A8',
+        hero: T.dark ? 'linear-gradient(180deg,#FFFFFF 0%,rgba(255,255,255,.7) 100%)' : 'linear-gradient(180deg,#090914 0%,rgba(30,30,54,.72) 100%)',
+        shadow: T.dark ? '0 30px 100px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.05) inset' : '0 24px 70px rgba(30,30,60,.14),0 0 0 1px rgba(255,255,255,.8) inset',
+    };
     const trust = [
         { Icon: ShieldCheck, title: 'Zéro risque bancaire', text: 'Aucune connexion à votre banque n\'est demandée. Vous saisissez vos montants, c\'est vous qui avez la main.' },
         { Icon: CloudOff, title: 'Zéro serveur distant', text: 'Toutes vos données financières restent sauvegardées directement dans votre navigateur. Rien ne fuite.' },
@@ -804,54 +831,57 @@ function WelcomeModal({ onEmpty, onImport, canClose, onClose }) {
         { cls: 'large', Icon: Layers, title: 'Séparez les apports des gains', text: 'Voir son solde augmenter c\'est bien, mais InvestTrack distingue clairement ce que vous avez versé de ce que vos placements ont généré.' },
     ];
     return (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 220, background: '#0A0A0E', color: '#EEEEFF', overflowY: 'auto', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', lineHeight: 1.6 }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 220, background: L.bg, color: L.text, overflowY: 'auto', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', lineHeight: 1.6 }}>
             <style>{`@media (max-width: 760px){.landing-demo-grid{grid-template-columns:1fr!important}.landing-bento{grid-template-columns:1fr!important}.landing-feature-large{grid-column:auto!important}.landing-demo-side{display:none!important}}`}</style>
-            <div style={{ position: 'absolute', width: 800, height: 800, background: `radial-gradient(circle, ${ACC}66 0%, rgba(0,0,0,0) 60%)`, top: -300, left: '50%', transform: 'translateX(-50%)', filter: 'blur(90px)', pointerEvents: 'none', opacity: .5 }} />
+            <div style={{ position: 'absolute', width: 800, height: 800, background: `radial-gradient(circle, ${ACC}${T.dark ? '66' : '30'} 0%, rgba(0,0,0,0) 60%)`, top: -300, left: '50%', transform: 'translateX(-50%)', filter: 'blur(90px)', pointerEvents: 'none', opacity: T.dark ? .5 : .75 }} />
             <nav style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: isMobile ? '1rem' : '1.5rem 2rem', maxWidth: 1200, margin: '0 auto', position: 'relative', zIndex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 800, fontSize: '1.2rem', letterSpacing: '-.03em' }}><div style={{ width: 32, height: 32, background: `linear-gradient(135deg,${ACC},#FF6B6B)`, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.7rem', fontWeight: 900, boxShadow: `0 0 16px ${ACC}66` }}>IT</div>InvestTrack</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <button onClick={openApp} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: isMobile ? '.55rem .8rem' : '.5rem 1rem', borderRadius: 12, fontWeight: 600, fontSize: isMobile ? '.78rem' : '.85rem', cursor: 'pointer', background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.08)', color: '#EEEEFF' }}>Ouvrir l'app <ArrowUpRight size={14} /></button>
-                    {canClose && <button onClick={onClose} title="Fermer" aria-label="Fermer" style={{ width: 36, height: 36, borderRadius: 10, border: '1px solid rgba(255,255,255,.08)', background: 'rgba(255,255,255,.03)', color: '#8080A8', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><X size={16} /></button>}
+                    <button onClick={() => setMode(mode === 'dark' ? 'light' : 'dark')} title="Changer de thème" aria-label="Changer de thème" style={{ width: 36, height: 36, borderRadius: 10, border: `1px solid ${L.border}`, background: L.surfaceSoft, color: L.textSoft, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{mode === 'dark' ? <Sun size={16} /> : <Moon size={16} />}</button>
+                    <button onClick={openApp} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: isMobile ? '.55rem .8rem' : '.5rem 1rem', borderRadius: 12, fontWeight: 600, fontSize: isMobile ? '.78rem' : '.85rem', cursor: 'pointer', background: L.surfaceSoft, border: `1px solid ${L.border}`, color: L.text }}>Ouvrir l'app <ArrowUpRight size={14} /></button>
+                    {canClose && <button onClick={onClose} title="Fermer" aria-label="Fermer" style={{ width: 36, height: 36, borderRadius: 10, border: `1px solid ${L.border}`, background: L.surfaceSoft, color: L.textSoft, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><X size={16} /></button>}
                 </div>
             </nav>
 
             <header style={{ textAlign: 'center', padding: isMobile ? '4rem 1rem 2rem' : '6rem 1rem 4rem', maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1 }}>
-                <div style={{ ...revealStyle, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '.4rem 1rem', background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 99, fontSize: '.8rem', fontWeight: 500, color: '#8080A8', marginBottom: '2rem' }}><span style={{ color: GRN }}>●</span> 100% privé - 100% gratuit</div>
-                <h1 style={{ ...revealStyle, transitionDelay: '100ms', fontSize: 'clamp(2.5rem,5vw,4.5rem)', fontWeight: 900, letterSpacing: '-.04em', lineHeight: 1.1, margin: '0 auto 1.5rem', maxWidth: 1000, background: 'linear-gradient(180deg,#FFFFFF 0%,rgba(255,255,255,.7) 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>Tout votre patrimoine réuni.<br />Votre vraie rentabilité révélée.</h1>
-                <p style={{ ...revealStyle, transitionDelay: '200ms', fontSize: 'clamp(1rem,2vw,1.25rem)', color: '#8080A8', maxWidth: 700, margin: '0 auto 2.5rem', lineHeight: 1.6 }}>PEA, cryptos, immobilier... Regroupez tous vos placements au même endroit. Obtenez une vision globale de vos finances en quelques clics, sans jamais que vos données ne quittent votre appareil.</p>
+                <div style={{ ...revealStyle, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '.4rem 1rem', background: L.surfaceSoft, border: `1px solid ${L.border}`, borderRadius: 99, fontSize: '.8rem', fontWeight: 500, color: L.textSoft, marginBottom: '2rem' }}><span style={{ color: GRN }}>●</span> 100% privé - 100% gratuit</div>
+                <h1 style={{ ...revealStyle, transitionDelay: '100ms', fontSize: 'clamp(2.5rem,5vw,4.5rem)', fontWeight: 900, letterSpacing: '-.04em', lineHeight: 1.1, margin: '0 auto 1.5rem', maxWidth: 1000, background: L.hero, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>Tout votre patrimoine réuni.<br />Votre vraie rentabilité révélée.</h1>
+                <p style={{ ...revealStyle, transitionDelay: '200ms', fontSize: 'clamp(1rem,2vw,1.25rem)', color: L.textSoft, maxWidth: 700, margin: '0 auto 2.5rem', lineHeight: 1.6 }}>PEA, cryptos, immobilier... Regroupez tous vos placements au même endroit. Obtenez une vision globale de vos finances en quelques clics, sans jamais que vos données ne quittent votre appareil.</p>
                 <div style={{ ...revealStyle, transitionDelay: '300ms', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem', flexWrap: 'wrap' }}>
                     <button onClick={openApp} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '.75rem 1.5rem', borderRadius: 12, fontWeight: 600, fontSize: '.95rem', cursor: 'pointer', background: ACC, color: '#fff', border: 'none', boxShadow: `0 4px 20px ${ACC}66` }}>Ouvrir l'application</button>
-                    <button onClick={() => fileRef.current?.click()} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '.75rem 1.5rem', borderRadius: 12, fontWeight: 600, fontSize: '.95rem', cursor: 'pointer', background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.08)', color: '#EEEEFF' }}><Upload size={18} />Importer mes données</button>
-                    <input ref={fileRef} type="file" accept=".json" style={{ display: 'none' }} onChange={onImport} />
                 </div>
             </header>
 
             <div style={{ maxWidth: 1000, margin: '0 auto 6rem', padding: '0 1rem', perspective: 1000 }}>
-                <div style={{ background: '#15151C', border: '1px solid rgba(255,255,255,.08)', borderRadius: 20, boxShadow: '0 30px 100px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.05) inset', overflow: 'hidden', transform: isMobile ? 'none' : 'rotateX(4deg) scale(.98)' }}>
-                    <div style={{ display: 'flex', gap: 6, padding: '1rem', borderBottom: '1px solid rgba(255,255,255,.08)', background: 'rgba(255,255,255,.02)' }}><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#FF5F56' }} /><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#FFBD2E' }} /><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#27C93F' }} /></div>
+                <div style={{ background: L.surface, border: `1px solid ${L.border}`, borderRadius: 20, boxShadow: L.shadow, overflow: 'hidden', transform: isMobile ? 'none' : 'rotateX(4deg) scale(.98)' }}>
+                    <div style={{ display: 'flex', gap: 6, padding: '1rem', borderBottom: `1px solid ${L.border}`, background: L.surfaceSoft }}><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#FF5F56' }} /><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#FFBD2E' }} /><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#27C93F' }} /></div>
                     <div className="landing-demo-grid" style={{ display: 'grid', gridTemplateColumns: '1fr' }}><LandingDemoMockup /></div>
                 </div>
             </div>
 
             <section style={{ padding: '6rem 1rem', maxWidth: 1100, margin: '0 auto' }}>
-                <div style={{ textAlign: 'center', marginBottom: '4rem' }}><h2 style={{ fontSize: 'clamp(2rem,4vw,2.5rem)', fontWeight: 800, letterSpacing: '-.03em', margin: '0 0 1rem' }}>Une intimité totale sur vos finances.</h2><p style={{ fontSize: 'clamp(1rem,2vw,1.25rem)', color: '#8080A8', maxWidth: 700, margin: '0 auto', lineHeight: 1.6 }}>Pas de création de compte. Pas de synchronisation bancaire requise. Vous gardez le contrôle total.</p></div>
+                <div style={{ textAlign: 'center', marginBottom: '4rem' }}><h2 style={{ fontSize: 'clamp(2rem,4vw,2.5rem)', fontWeight: 800, letterSpacing: '-.03em', margin: '0 0 1rem', color: L.text }}>Une intimité totale sur vos finances.</h2><p style={{ fontSize: 'clamp(1rem,2vw,1.25rem)', color: L.textSoft, maxWidth: 700, margin: '0 auto', lineHeight: 1.6 }}>Pas de création de compte. Pas de synchronisation bancaire requise. Vous gardez le contrôle total.</p></div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: '2rem' }}>
-                    {trust.map(item => <div key={item.title} style={{ textAlign: 'center', padding: '2rem', background: 'rgba(255,255,255,.02)', borderRadius: 20, border: '1px solid rgba(255,255,255,.08)' }}><div style={{ width: 56, height: 56, background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', color: VALC }}><item.Icon size={27} /></div><h3 style={{ fontSize: '1.2rem', margin: '0 0 .5rem' }}>{item.title}</h3><p style={{ color: '#8080A8', fontSize: '.95rem', margin: 0 }}>{item.text}</p></div>)}
+                    {trust.map(item => <div key={item.title} style={{ textAlign: 'center', padding: '2rem', background: L.surfaceSoft, borderRadius: 20, border: `1px solid ${L.border}` }}><div style={{ width: 56, height: 56, background: L.surfaceSoft, border: `1px solid ${L.border}`, borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', color: VALC }}><item.Icon size={27} /></div><h3 style={{ fontSize: '1.2rem', margin: '0 0 .5rem', color: L.text }}>{item.title}</h3><p style={{ color: L.textSoft, fontSize: '.95rem', margin: 0 }}>{item.text}</p></div>)}
                 </div>
             </section>
 
             <section style={{ padding: '6rem 1rem', maxWidth: 1100, margin: '0 auto' }}>
-                <div style={{ textAlign: 'center', marginBottom: '4rem' }}><h2 style={{ fontSize: 'clamp(2rem,4vw,2.5rem)', fontWeight: 800, letterSpacing: '-.03em', margin: 0 }}>Des indicateurs puissants, expliqués simplement.</h2></div>
+                <div style={{ textAlign: 'center', marginBottom: '4rem' }}><h2 style={{ fontSize: 'clamp(2rem,4vw,2.5rem)', fontWeight: 800, letterSpacing: '-.03em', margin: 0, color: L.text }}>Des indicateurs puissants, expliqués simplement.</h2></div>
                 <div className="landing-bento" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gridAutoRows: 'minmax(280px,auto)', gap: '1.5rem' }}>
-                    {features.map(item => <div key={item.title} className={item.cls === 'large' ? 'landing-feature-large' : undefined} style={{ gridColumn: item.cls === 'large' ? 'span 2' : 'auto', background: '#15151C', border: '1px solid rgba(255,255,255,.08)', borderRadius: 24, padding: '2.5rem 2rem', position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', minHeight: 280 }}><div style={{ position: 'absolute', top: '2rem', right: '2rem', color: item.color || ACC, background: `${item.color || ACC}1A`, padding: '1rem', borderRadius: 16 }}><item.Icon size={32} /></div><h3 style={{ fontSize: '1.4rem', margin: '0 0 .5rem', position: 'relative' }}>{item.title}</h3><p style={{ color: '#8080A8', fontSize: '.95rem', margin: 0, maxWidth: '85%', position: 'relative' }}>{item.text}</p></div>)}
+                    {features.map(item => <div key={item.title} className={item.cls === 'large' ? 'landing-feature-large' : undefined} style={{ gridColumn: item.cls === 'large' ? 'span 2' : 'auto', background: L.surface, border: `1px solid ${L.border}`, borderRadius: 24, padding: '2.5rem 2rem', position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', minHeight: 280 }}><div style={{ position: 'absolute', top: '2rem', right: '2rem', color: item.color || ACC, background: `${item.color || ACC}1A`, padding: '1rem', borderRadius: 16 }}><item.Icon size={32} /></div><h3 style={{ fontSize: '1.4rem', margin: '0 0 .5rem', position: 'relative', color: L.text }}>{item.title}</h3><p style={{ color: L.textSoft, fontSize: '.95rem', margin: 0, maxWidth: '85%', position: 'relative' }}>{item.text}</p></div>)}
                 </div>
             </section>
 
-            <section style={{ textAlign: 'center', marginBottom: '4rem', padding: '6rem 1rem', maxWidth: 1100, marginLeft: 'auto', marginRight: 'auto' }}>
-                <h2 style={{ fontSize: 'clamp(2rem,4vw,2.5rem)', fontWeight: 800, margin: '0 0 1.5rem' }}>Prenez vos finances en main.</h2>
+            <section style={{ textAlign: 'center', padding: '6rem 1rem 4rem', maxWidth: 1100, marginLeft: 'auto', marginRight: 'auto' }}>
+                <h2 style={{ fontSize: 'clamp(2rem,4vw,2.5rem)', fontWeight: 800, margin: '0 0 1.5rem', color: L.text }}>Prenez vos finances en main.</h2>
                 <button onClick={openApp} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '1rem 2rem', borderRadius: 12, fontWeight: 600, fontSize: '1.1rem', cursor: 'pointer', background: ACC, color: '#fff', border: 'none', boxShadow: `0 4px 20px ${ACC}66` }}>Commencer maintenant <ArrowUpRight size={20} /></button>
-                <p style={{ color: '#8080A8', fontSize: '.85rem', marginTop: '1.2rem' }}>Gratuit. Sans inscription. Fonctionne instantanément.</p>
+                <p style={{ color: L.textSoft, fontSize: '.85rem', marginTop: '1.2rem' }}>Gratuit. Sans inscription. Fonctionne instantanément.</p>
             </section>
+            <footer style={{ maxWidth: 1100, margin: '0 auto', padding: '1.5rem 1rem 2.5rem', borderTop: `1px solid ${L.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', color: L.textFaint, fontSize: '.78rem' }}>
+                <span>InvestTrack</span>
+                <span>Vos données restent locales. Pensez à exporter une sauvegarde après vos changements.</span>
+            </footer>
         </div>
     );
 }
@@ -1387,6 +1417,20 @@ function PochesPage({ pm, vs, ts, gm, setSelP, setModal }) {
     );
 }
 
+function ExportReminder({ show, onExport }) {
+    const T = useT();
+    if (!show) return null;
+    return (
+        <div style={{ border: `1px solid ${AMB}40`, background: T.dark ? `${AMB}12` : `${AMB}0D`, borderRadius: 12, padding: '.65rem .8rem', marginBottom: '.85rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: T.t2, fontSize: '.76rem', lineHeight: 1.45 }}>
+                <Download size={15} color={AMB} />
+                <span><strong style={{ color: T.t1 }}>Changement enregistré localement.</strong> Exportez vos données pour garder un fichier de sauvegarde à jour.</span>
+            </div>
+            <Btn ghost onClick={onExport} style={{ borderColor: `${AMB}45`, color: AMB, background: `${AMB}10` }}><Download size={12} />Exporter maintenant</Btn>
+        </div>
+    );
+}
+
 // ── App root ──
 export default function App() {
     const [mode, setMode] = useState('dark');
@@ -1398,6 +1442,7 @@ export default function App() {
     const [ready, setReady] = useState(false);
     const [dataMode, setDataMode] = useState('empty');
     const [showWelcome, setShowWelcome] = useState(false);
+    const [needsExport, setNeedsExport] = useState(false);
     const [modal, setModal] = useState(null);
     const T = useMemo(() => mode === 'dark' ? mkDark() : mkLight(), [mode]);
     const { isMobile } = useBreakpoint();
@@ -1433,16 +1478,16 @@ export default function App() {
         return { tv, tc, tg: pm.reduce((s, p) => s + p.gainLatent, 0), td, tf, latent, realised, xirr: xCFs.length >= 2 ? calcXIRR(xCFs) : null };
     }, [pm, ps, ts, vs]);
 
-    const markPersonal = () => { setDataMode(m => m === 'file' ? 'file' : 'saved'); setShowWelcome(false); };
-    const startEmpty = () => { setPs([]); setTs([]); setVs([]); setDataMode('empty'); setShowWelcome(false); setSelP(null); setPage('dashboard'); };
-    const useDemoAsBase = () => { setDataMode('saved'); setShowWelcome(false); };
+    const markPersonal = () => { setDataMode(m => m === 'file' ? 'file' : 'saved'); setNeedsExport(true); setShowWelcome(false); };
+    const startEmpty = () => { setPs([]); setTs([]); setVs([]); setDataMode('empty'); setNeedsExport(false); setShowWelcome(false); setSelP(null); setPage('dashboard'); };
+    const useDemoAsBase = () => { setDataMode('saved'); setNeedsExport(true); setShowWelcome(false); };
     const disconnectFile = async () => {
         if (!window.confirm('Déconnecter ce fichier ? La copie locale sera effacée de ce navigateur.')) return;
         try {
             if (window.storage.remove) await window.storage.remove('inv_v9');
             else window.localStorage?.removeItem('inv_v9');
         } catch { }
-        setPs([]); setTs([]); setVs([]); setDataMode('empty'); setShowWelcome(true); setSelP(null); setPage('dashboard'); setModal(null);
+        setPs([]); setTs([]); setVs([]); setDataMode('empty'); setNeedsExport(false); setShowWelcome(true); setSelP(null); setPage('dashboard'); setModal(null);
     };
 
     const handleSaisie = (pocheId, txData, valeur, date, note = '') => {
@@ -1463,6 +1508,7 @@ export default function App() {
             const u = URL.createObjectURL(bl); const a = document.createElement('a');
             a.href = u; a.download = `investtrack_${TODAY}.json`; document.body.appendChild(a); a.click();
             setTimeout(() => { URL.revokeObjectURL(u); document.body.removeChild(a); }, 200);
+            setNeedsExport(false);
         } catch (e) { alert('Export échoué : ' + e.message); }
     };
     const impJSON = e => {
@@ -1475,7 +1521,7 @@ export default function App() {
                 const nextTs = Array.isArray(d.transactions) ? d.transactions : Array.isArray(d.t) ? d.t : null;
                 const nextVs = Array.isArray(d.valorisations) ? d.valorisations : Array.isArray(d.v) ? d.v : null;
                 if (!nextPs && !nextTs && !nextVs) throw new Error('Format non reconnu');
-                setPs(nextPs || []); setTs(nextTs || []); setVs(nextVs || []); setDataMode('file'); setShowWelcome(false); setSelP(null); setPage('dashboard');
+                setPs(nextPs || []); setTs(nextTs || []); setVs(nextVs || []); setDataMode('file'); setNeedsExport(false); setShowWelcome(false); setSelP(null); setPage('dashboard');
             }
             catch (err) { alert('Fichier invalide : ' + err.message); }
         };
@@ -1502,6 +1548,7 @@ export default function App() {
             <div style={{ minHeight: '100vh', background: appBg, color: T.t1, fontFamily: 'system-ui,-apple-system,sans-serif', fontSize: '13px', lineHeight: 1.5 }}>
                 <TopBar page={page} selP={selP} setPage={setPage} setSelP={setSelP} mode={mode} setMode={setMode} setModal={setModal} expJSON={expJSON} impJSON={impJSON} dataMode={dataMode} disconnectFile={disconnectFile} onHome={() => { setSelP(null); setShowWelcome(true); }} />
                 <main style={{ maxWidth: 1240, margin: '0 auto', padding: `1.1rem 1rem ${mainPb}` }}>
+                    <ExportReminder show={needsExport && !showWelcome} onExport={expJSON} />
                     {detailPoche
                         ? <PocheDetail poche={detailPoche} txs={ts} vals={vs} onBack={() => setSelP(null)} onDelTx={delTx} onDelVal={delV} onDelPoche={delP} setModal={setModal} />
                         : page === 'dashboard'
@@ -1511,7 +1558,7 @@ export default function App() {
                 </main>
             </div>
             {renderModal()}
-            {showWelcome && <WelcomeModal onEmpty={startEmpty} onImport={impJSON} canClose={dataMode !== 'empty'} onClose={() => setShowWelcome(false)} />}
+            {showWelcome && <WelcomeModal onEmpty={startEmpty} canClose={dataMode !== 'empty'} onClose={() => setShowWelcome(false)} mode={mode} setMode={setMode} />}
         </TC.Provider>
     );
 }
