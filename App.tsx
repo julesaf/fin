@@ -621,50 +621,73 @@ function WelcomeModal({ onEmpty, canClose, onClose, mode, setMode }) {
     const openApp = () => canClose ? onClose() : onEmpty();
     const landingRef = useRef(null);
     const demoPreviewRef = useRef(null);
-    const touchYRef = useRef(null);
+    const pinRef = useRef(null);
+    const targetRef = useRef(0);
+    const easedRef = useRef(0);
+    const rafRef = useRef(0);
     const [demoProgress, setDemoProgress] = useState(0);
-    const updateDemoProgress = demo => {
-        if (!demo) return;
-        const max = demo.scrollHeight - demo.clientHeight;
-        setDemoProgress(max > 2 ? Math.max(0, Math.min(1, demo.scrollTop / max)) : 0);
-    };
-    const routeScrollToDemo = (deltaY, source = 'wheel') => {
-        const demo = demoPreviewRef.current;
-        if (!demo || !deltaY || Math.abs(deltaY) < 1) return false;
-        const max = demo.scrollHeight - demo.clientHeight;
-        if (max <= 2) return false;
-        const rect = demo.getBoundingClientRect();
-        const vh = typeof window !== 'undefined' ? window.innerHeight : 900;
-        const demoIsFocusZone = rect.top < vh * 0.72 && rect.bottom > vh * 0.28;
-        if (!demoIsFocusZone) return false;
-        const canScrollDown = deltaY > 0 && demo.scrollTop < max - 1;
-        const canScrollUp = deltaY < 0 && demo.scrollTop > 1;
-        if (!canScrollDown && !canScrollUp) return false;
-        const before = demo.scrollTop;
-        const speed = source === 'touch' ? 0.55 : 0.32;
-        const limit = source === 'touch' ? 42 : 34;
-        const softenedDelta = Math.sign(deltaY) * Math.min(Math.abs(deltaY) * speed, limit);
-        demo.scrollTop = Math.max(0, Math.min(max, before + softenedDelta));
-        updateDemoProgress(demo);
-        return demo.scrollTop !== before;
-    };
-    const onLandingWheel = e => {
-        if (routeScrollToDemo(e.deltaY, 'wheel')) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
-    };
-    const onLandingTouchStart = e => { touchYRef.current = e.touches?.[0]?.clientY ?? null; };
-    const onLandingTouchMove = e => {
-        const y = e.touches?.[0]?.clientY;
-        if (touchYRef.current == null || y == null) return;
-        const deltaY = touchYRef.current - y;
-        if (routeScrollToDemo(deltaY, 'touch')) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
-        touchYRef.current = y;
-    };
+    const [intro, setIntro] = useState(0);
+
+    useEffect(() => {
+        const scroller = landingRef.current;
+        const pin = pinRef.current;
+        if (!scroller || !pin) return;
+
+        // Fraction of the intro phase (card unfolds) vs. the content-scroll phase.
+        const INTRO_PHASE = 0.16;
+
+        const computeTarget = () => {
+            const vh = scroller.clientHeight || window.innerHeight;
+            // How far the tall pin section has travelled past the top of the viewport.
+            const travelled = -pin.offsetTop + scroller.scrollTop;
+            const total = pin.offsetHeight - vh; // scrollable distance while pinned
+            const raw = total > 0 ? travelled / total : 0;
+            targetRef.current = Math.max(0, Math.min(1, raw));
+            if (!rafRef.current) rafRef.current = requestAnimationFrame(tick);
+        };
+
+        const tick = () => {
+            // Critically-damped easing toward the target -> smooth Apple-like glide.
+            const diff = targetRef.current - easedRef.current;
+            easedRef.current += diff * 0.16;
+            if (Math.abs(diff) < 0.0005) easedRef.current = targetRef.current;
+
+            const p = easedRef.current;
+            const introP = Math.max(0, Math.min(1, p / INTRO_PHASE));
+            const scrollP = Math.max(0, Math.min(1, (p - INTRO_PHASE) / (1 - INTRO_PHASE)));
+
+            setIntro(introP);
+            setDemoProgress(scrollP);
+
+            const demo = demoPreviewRef.current;
+            if (demo) {
+                const max = demo.scrollHeight - demo.clientHeight;
+                if (max > 2) demo.scrollTop = scrollP * max;
+            }
+
+            if (Math.abs(targetRef.current - easedRef.current) > 0.0005) {
+                rafRef.current = requestAnimationFrame(tick);
+            } else {
+                rafRef.current = 0;
+            }
+        };
+
+        computeTarget();
+        scroller.addEventListener('scroll', computeTarget, { passive: true });
+        window.addEventListener('resize', computeTarget);
+        return () => {
+            scroller.removeEventListener('scroll', computeTarget);
+            window.removeEventListener('resize', computeTarget);
+            if (rafRef.current) cancelAnimationFrame(rafRef.current);
+            rafRef.current = 0;
+        };
+    }, []);
+
+    // Card unfold animation derived from the intro phase.
+    const cardScale = 0.86 + 0.14 * intro;
+    const cardTilt = (1 - intro) * 9;
+    const cardLift = (1 - intro) * 40;
+    const cardOpacity = 0.55 + 0.45 * intro;
     const L = {
         bg: T.dark ? '#0A0A0E' : '#F7F6FC',
         surface: T.dark ? '#15151C' : '#FFFFFF',
@@ -687,12 +710,12 @@ function WelcomeModal({ onEmpty, canClose, onClose, mode, setMode }) {
         { cls: 'large', Icon: Layers, title: 'Séparez les apports des gains', text: 'Voir son solde augmenter c\'est bien, mais InvestTrack distingue clairement ce que vous avez versé de ce que vos placements ont généré.' },
     ];
     return (
-        <div ref={landingRef} onWheel={onLandingWheel} onTouchStart={onLandingTouchStart} onTouchMove={onLandingTouchMove} style={{ position: 'fixed', inset: 0, width: '100vw', zIndex: 220, background: L.bg, color: L.text, overflowY: 'auto', overflowX: 'hidden', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', lineHeight: 1.6 }}>
+        <div ref={landingRef} style={{ position: 'fixed', inset: 0, width: '100vw', zIndex: 220, background: L.bg, color: L.text, overflowY: 'auto', overflowX: 'hidden', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', lineHeight: 1.6 }}>
             <style>{`
                 .landing-scrollbar{scrollbar-width:thin;scrollbar-color:${ACC}55 transparent}
                 .landing-scrollbar::-webkit-scrollbar{width:8px;height:8px}.landing-scrollbar::-webkit-scrollbar-thumb{background:${ACC}55;border-radius:99px}.landing-scrollbar::-webkit-scrollbar-track{background:transparent}
-                .landing-demo-pin{position:relative;min-height:calc(min(82vh,920px) + 220px);margin-bottom:6rem}.landing-demo-shell{position:sticky;top:88px;z-index:2}
-                @media (max-width: 900px){.landing-demo-pin{min-height:auto;margin-bottom:3.5rem!important}.landing-demo-shell{position:relative!important;top:auto!important;max-width:calc(100vw - 1.5rem)!important}.landing-demo-card{transform:none!important;border-radius:16px!important}.landing-app-preview{max-height:78vh!important}.landing-section{padding-top:4rem!important;padding-bottom:4rem!important}.landing-trust-grid{gap:1rem!important}.landing-bento{grid-template-columns:1fr!important}.landing-feature-large{grid-column:auto!important}.landing-feature-card{min-height:220px!important;padding:2rem 1.5rem!important}.landing-feature-card p{max-width:100%!important}.landing-demo-side{display:none!important}}
+                .landing-demo-pin{position:relative;height:340vh}.landing-demo-sticky{position:sticky;top:0;height:100vh;display:flex;align-items:center;justify-content:center;padding:0 1rem;box-sizing:border-box}.landing-demo-shell{width:100%;max-width:1180px;perspective:1400px}
+                @media (max-width: 900px){.landing-demo-pin{height:auto;margin-bottom:3.5rem}.landing-demo-sticky{position:relative;top:auto;height:auto;padding:0 .75rem}.landing-demo-shell{max-width:calc(100vw - 1.5rem)!important}.landing-demo-card{transform:none!important;opacity:1!important;border-radius:16px!important}.landing-app-preview{max-height:78vh!important}.landing-section{padding-top:4rem!important;padding-bottom:4rem!important}.landing-trust-grid{gap:1rem!important}.landing-bento{grid-template-columns:1fr!important}.landing-feature-large{grid-column:auto!important}.landing-feature-card{min-height:220px!important;padding:2rem 1.5rem!important}.landing-feature-card p{max-width:100%!important}.landing-demo-side{display:none!important}}
                 @media (max-width: 640px){.landing-hero{padding:3.25rem .9rem 2rem!important}.landing-hero h1{font-size:clamp(2.35rem,14vw,3.55rem)!important;line-height:1.02!important}.landing-hero p{font-size:1rem!important}.landing-nav{padding:.85rem 1rem!important}.landing-open-label{display:none!important}.landing-app-preview{max-height:72vh!important}.landing-demo-windowbar{padding:.7rem!important}.landing-section{padding-left:.9rem!important;padding-right:.9rem!important}.landing-footer{justify-content:center!important;text-align:center!important}}
                 @media (max-width: 430px){.landing-brand-text{display:none!important}.landing-app-preview{max-height:68vh!important}.landing-demo-shell{padding:0 .6rem!important;max-width:100vw!important}.landing-feature-card{min-height:200px!important}}
             `}</style>
@@ -715,18 +738,20 @@ function WelcomeModal({ onEmpty, canClose, onClose, mode, setMode }) {
                 </div>
             </header>
 
-            <section className="landing-demo-pin">
-                <div className="landing-demo-shell" style={{ maxWidth: 1180, margin: '0 auto', padding: '0 1rem', perspective: 1000 }}>
-                    <div className="landing-demo-card" style={{ width: '100%', maxWidth: '100%', background: L.surface, border: `1px solid ${L.border}`, borderRadius: 20, boxShadow: L.shadow, overflow: 'hidden', transform: isMobile ? 'none' : 'rotateX(3deg) scale(.985)' }}>
-                        <div className="landing-demo-windowbar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '1rem', borderBottom: `1px solid ${L.border}`, background: L.surfaceSoft }}>
-                            <div style={{ display: 'flex', gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#FF5F56' }} /><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#FFBD2E' }} /><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#27C93F' }} /></div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                                <span style={{ color: L.textFaint, fontSize: '.72rem', fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Démo interactive</span>
-                                <span style={{ color: ACC, fontSize: '.72rem', fontWeight: 800, fontVariantNumeric: 'tabular-nums', minWidth: 38, textAlign: 'right' }}>{Math.round(demoProgress * 100)}%</span>
+            <section className="landing-demo-pin" ref={pinRef}>
+                <div className="landing-demo-sticky">
+                    <div className="landing-demo-shell">
+                        <div className="landing-demo-card" style={{ width: '100%', maxWidth: '100%', background: L.surface, border: `1px solid ${L.border}`, borderRadius: 24, boxShadow: L.shadow, overflow: 'hidden', transformStyle: 'preserve-3d', transformOrigin: 'center 75%', opacity: isMobile ? 1 : cardOpacity, transform: isMobile ? 'none' : `perspective(1400px) rotateX(${cardTilt}deg) translateY(${cardLift}px) scale(${cardScale})`, willChange: 'transform, opacity' }}>
+                            <div className="landing-demo-windowbar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '1rem', borderBottom: `1px solid ${L.border}`, background: L.surfaceSoft }}>
+                                <div style={{ display: 'flex', gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#FF5F56' }} /><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#FFBD2E' }} /><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#27C93F' }} /></div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                                    <span style={{ color: L.textFaint, fontSize: '.72rem', fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Démo interactive</span>
+                                    <span style={{ color: ACC, fontSize: '.72rem', fontWeight: 800, fontVariantNumeric: 'tabular-nums', minWidth: 38, textAlign: 'right' }}>{Math.round(demoProgress * 100)}%</span>
+                                </div>
                             </div>
+                            <div style={{ height: 3, background: T.dark ? 'rgba(255,255,255,.05)' : 'rgba(10,10,20,.06)' }}><div style={{ width: `${demoProgress * 100}%`, height: '100%', background: `linear-gradient(90deg,${ACC},#FF6B6B)`, boxShadow: `0 0 12px ${ACC}88` }} /></div>
+                            <div ref={demoPreviewRef} className="landing-app-preview landing-scrollbar" style={{ maxHeight: 'min(82vh,920px)', overflow: 'hidden', overscrollBehavior: 'contain' }}><LandingDemoMockup /></div>
                         </div>
-                        <div style={{ height: 3, background: T.dark ? 'rgba(255,255,255,.05)' : 'rgba(10,10,20,.06)' }}><div style={{ width: `${demoProgress * 100}%`, height: '100%', background: `linear-gradient(90deg,${ACC},#FF6B6B)`, transition: 'width .16s ease-out', boxShadow: `0 0 12px ${ACC}88` }} /></div>
-                        <div ref={demoPreviewRef} onScroll={e => updateDemoProgress(e.currentTarget)} className="landing-app-preview landing-scrollbar" style={{ maxHeight: 'min(82vh,920px)', overflow: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}><LandingDemoMockup /></div>
                     </div>
                 </div>
             </section>
