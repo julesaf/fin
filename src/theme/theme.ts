@@ -1,4 +1,4 @@
-import { ACCENT_COLOR } from './appConstants';
+import { ACCENT_COLOR } from '../config/appConstants';
 
 export type AppTheme = {
     dark: boolean;
