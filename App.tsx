@@ -616,9 +616,10 @@ function LandingDemoMockup() {
 }
 
 function WelcomeModal({ onEmpty, canClose, onClose, mode, setMode }) {
-    const T = useT(); const { isMobile } = useBreakpoint();
+    const T = useT(); const { isMobile, isTablet } = useBreakpoint();
     const revealStyle = { opacity: 1, transform: 'translateY(0)', transition: 'all .8s cubic-bezier(.2,.8,.2,1)' };
     const openApp = () => canClose ? onClose() : onEmpty();
+    const disableDemoCinematic = isTablet;
     const landingRef = useRef(null);
     const demoPreviewRef = useRef(null);
     const pinRef = useRef(null);
@@ -632,7 +633,7 @@ function WelcomeModal({ onEmpty, canClose, onClose, mode, setMode }) {
     const DEMO_SCROLL_GAIN = 1.45;
 
     const forwardPreviewWheel = e => {
-        if (isMobile) return;
+        if (disableDemoCinematic) return;
         const scroller = landingRef.current;
         if (!scroller) return;
         e.preventDefault();
@@ -643,6 +644,11 @@ function WelcomeModal({ onEmpty, canClose, onClose, mode, setMode }) {
         const scroller = landingRef.current;
         const pin = pinRef.current;
         if (!scroller || !pin) return;
+        if (disableDemoCinematic) {
+            setIntro(1);
+            setDemoProgress(0);
+            return;
+        }
 
         const computeTarget = () => {
             const vh = scroller.clientHeight || window.innerHeight;
@@ -689,7 +695,7 @@ function WelcomeModal({ onEmpty, canClose, onClose, mode, setMode }) {
             if (rafRef.current) cancelAnimationFrame(rafRef.current);
             rafRef.current = 0;
         };
-    }, []);
+    }, [disableDemoCinematic]);
 
     // Luxury-style motion: no zoom, only subtle depth and parallax.
     const cardScale = 1;
@@ -728,9 +734,9 @@ function WelcomeModal({ onEmpty, canClose, onClose, mode, setMode }) {
                 .landing-scrollbar{scrollbar-width:thin;scrollbar-color:${ACC}55 transparent}
                 .landing-scrollbar::-webkit-scrollbar{width:8px;height:8px}.landing-scrollbar::-webkit-scrollbar-thumb{background:${ACC}55;border-radius:99px}.landing-scrollbar::-webkit-scrollbar-track{background:transparent}
                 .landing-demo-pin{position:relative;height:220vh}.landing-demo-sticky{position:sticky;top:0;height:100vh;display:flex;align-items:center;justify-content:center;padding:0 1rem;box-sizing:border-box}.landing-demo-shell{width:100%;max-width:1180px;perspective:1400px;position:relative}
-                @media (max-width: 900px){.landing-demo-pin{height:auto;margin-bottom:3.5rem}.landing-demo-sticky{position:relative;top:auto;height:auto;padding:0 .75rem}.landing-demo-shell{max-width:calc(100vw - 1.5rem)!important}.landing-demo-card{transform:none!important;opacity:1!important;border-radius:16px!important}.landing-app-preview{max-height:78vh!important}.landing-section{padding-top:4rem!important;padding-bottom:4rem!important}.landing-trust-grid{gap:1rem!important}.landing-bento{grid-template-columns:1fr!important}.landing-feature-large{grid-column:auto!important}.landing-feature-card{min-height:220px!important;padding:2rem 1.5rem!important}.landing-feature-card p{max-width:100%!important}.landing-demo-side{display:none!important}}
-                @media (max-width: 640px){.landing-hero{padding:3.25rem .9rem 2rem!important}.landing-hero h1{font-size:clamp(2.35rem,14vw,3.55rem)!important;line-height:1.02!important}.landing-hero p{font-size:1rem!important}.landing-nav{padding:.85rem 1rem!important}.landing-open-label{display:none!important}.landing-app-preview{max-height:72vh!important}.landing-demo-windowbar{padding:.7rem!important}.landing-section{padding-left:.9rem!important;padding-right:.9rem!important}.landing-footer{justify-content:center!important;text-align:center!important}}
-                @media (max-width: 430px){.landing-brand-text{display:none!important}.landing-app-preview{max-height:68vh!important}.landing-demo-shell{padding:0 .6rem!important;max-width:100vw!important}.landing-feature-card{min-height:200px!important}}
+                @media (max-width: 960px){.landing-demo-pin{height:auto;margin-bottom:3.5rem}.landing-demo-sticky{position:relative;top:auto;height:auto;padding:0 .75rem}.landing-demo-shell{max-width:calc(100vw - 1.5rem)!important}.landing-demo-card{transform:none!important;opacity:1!important;border-radius:16px!important}.landing-app-preview{max-height:none!important;overflow:visible!important;transform:none!important;touch-action:pan-y!important}.landing-section{padding-top:4rem!important;padding-bottom:4rem!important}.landing-trust-grid{gap:1rem!important}.landing-bento{grid-template-columns:1fr!important}.landing-feature-large{grid-column:auto!important}.landing-feature-card{min-height:220px!important;padding:2rem 1.5rem!important}.landing-feature-card p{max-width:100%!important}.landing-demo-side{display:none!important}}
+                @media (max-width: 640px){.landing-hero{padding:3.25rem .9rem 2rem!important}.landing-hero h1{font-size:clamp(2.35rem,14vw,3.55rem)!important;line-height:1.02!important}.landing-hero p{font-size:1rem!important}.landing-nav{padding:.85rem 1rem!important}.landing-open-label{display:none!important}.landing-demo-windowbar{padding:.7rem!important}.landing-section{padding-left:.9rem!important;padding-right:.9rem!important}.landing-footer{justify-content:center!important;text-align:center!important}}
+                @media (max-width: 430px){.landing-brand-text{display:none!important}.landing-demo-shell{padding:0 .6rem!important;max-width:100vw!important}.landing-feature-card{min-height:200px!important}}
             `}</style>
             <div style={{ position: 'absolute', width: 800, height: 800, background: `radial-gradient(circle, ${ACC}${T.dark ? '66' : '30'} 0%, rgba(0,0,0,0) 60%)`, top: -300, left: '50%', transform: 'translateX(-50%)', filter: 'blur(90px)', pointerEvents: 'none', opacity: T.dark ? .5 : .75 }} />
             <nav className="landing-nav" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: isMobile ? '1rem' : '1.5rem 2rem', maxWidth: 1200, width: '100%', margin: '0 auto', position: 'sticky', top: 0, zIndex: 5, boxSizing: 'border-box', background: T.dark ? 'rgba(10,10,14,.72)' : 'rgba(247,246,252,.74)', borderBottom: `1px solid ${L.border}`, backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}>
@@ -753,10 +759,10 @@ function WelcomeModal({ onEmpty, canClose, onClose, mode, setMode }) {
 
             <section className="landing-demo-pin" ref={pinRef}>
                 <div className="landing-demo-sticky">
-                    <div className="landing-demo-shell" style={{ transform: isMobile ? 'none' : `translateY(${shellLift}px)`, willChange: 'transform' }}>
-                        {!isMobile && <div aria-hidden="true" style={{ position: 'absolute', inset: '-7% 6% auto', height: '75%', background: `radial-gradient(circle at 50% 15%, ${ACC}${T.dark ? '30' : '20'} 0%, rgba(0,0,0,0) 68%)`, opacity: shellGlow, filter: 'blur(48px)', pointerEvents: 'none' }} />}
-                        <div className="landing-demo-card" style={{ width: '100%', maxWidth: '100%', background: L.surface, border: `1px solid ${L.border}`, borderRadius: 24, boxShadow: L.shadow, overflow: 'hidden', transformStyle: 'preserve-3d', transformOrigin: 'center 75%', opacity: isMobile ? 1 : cardOpacity, transform: isMobile ? 'none' : `perspective(1400px) rotateX(${cardTilt}deg) translateY(${cardLift}px) scale(${cardScale})`, willChange: 'transform, opacity' }}>
-                            <div className="landing-demo-windowbar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '1rem', borderBottom: `1px solid ${L.border}`, background: L.surfaceSoft, transform: isMobile ? 'none' : `translateY(${headerParallax}px)`, willChange: 'transform' }}>
+                    <div className="landing-demo-shell" style={{ transform: disableDemoCinematic ? 'none' : `translateY(${shellLift}px)`, willChange: disableDemoCinematic ? undefined : 'transform' }}>
+                        {!disableDemoCinematic && <div aria-hidden="true" style={{ position: 'absolute', inset: '-7% 6% auto', height: '75%', background: `radial-gradient(circle at 50% 15%, ${ACC}${T.dark ? '30' : '20'} 0%, rgba(0,0,0,0) 68%)`, opacity: shellGlow, filter: 'blur(48px)', pointerEvents: 'none' }} />}
+                        <div className="landing-demo-card" style={{ width: '100%', maxWidth: '100%', background: L.surface, border: `1px solid ${L.border}`, borderRadius: 24, boxShadow: L.shadow, overflow: 'hidden', transformStyle: 'preserve-3d', transformOrigin: 'center 75%', opacity: disableDemoCinematic ? 1 : cardOpacity, transform: disableDemoCinematic ? 'none' : `perspective(1400px) rotateX(${cardTilt}deg) translateY(${cardLift}px) scale(${cardScale})`, willChange: disableDemoCinematic ? undefined : 'transform, opacity' }}>
+                            <div className="landing-demo-windowbar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '1rem', borderBottom: `1px solid ${L.border}`, background: L.surfaceSoft, transform: disableDemoCinematic ? 'none' : `translateY(${headerParallax}px)`, willChange: disableDemoCinematic ? undefined : 'transform' }}>
                                 <div style={{ display: 'flex', gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#FF5F56' }} /><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#FFBD2E' }} /><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#27C93F' }} /></div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
                                     <span style={{ color: L.textFaint, fontSize: '.72rem', fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Démo interactive</span>
@@ -764,7 +770,7 @@ function WelcomeModal({ onEmpty, canClose, onClose, mode, setMode }) {
                                 </div>
                             </div>
                             <div style={{ height: 3, background: T.dark ? 'rgba(255,255,255,.05)' : 'rgba(10,10,20,.06)' }}><div style={{ width: `${demoProgress * 100}%`, height: '100%', background: `linear-gradient(90deg,${ACC},#FF6B6B)`, boxShadow: `0 0 ${12 + demoProgress * 12}px ${ACC}88` }} /></div>
-                            <div ref={demoPreviewRef} onWheelCapture={forwardPreviewWheel} className="landing-app-preview landing-scrollbar" style={{ maxHeight: 'min(82vh,920px)', overflow: 'hidden', overscrollBehavior: 'contain', transform: isMobile ? 'none' : `translateY(-${previewParallax}px)`, willChange: 'transform', boxShadow: isMobile ? undefined : `0 ${previewShadow}px 80px rgba(0,0,0,${T.dark ? 0.32 : 0.12}) inset` }}><LandingDemoMockup /></div>
+                            <div ref={demoPreviewRef} onWheelCapture={forwardPreviewWheel} className="landing-app-preview landing-scrollbar" style={{ maxHeight: disableDemoCinematic ? 'none' : 'min(82vh,920px)', overflow: disableDemoCinematic ? 'visible' : 'hidden', WebkitOverflowScrolling: 'touch', overscrollBehavior: disableDemoCinematic ? 'auto' : 'contain', touchAction: 'pan-y', transform: disableDemoCinematic ? 'none' : `translateY(-${previewParallax}px)`, willChange: disableDemoCinematic ? undefined : 'transform', boxShadow: disableDemoCinematic ? undefined : `0 ${previewShadow}px 80px rgba(0,0,0,${T.dark ? 0.32 : 0.12}) inset` }}><LandingDemoMockup /></div>
                         </div>
                     </div>
                 </div>
