@@ -622,6 +622,12 @@ function WelcomeModal({ onEmpty, canClose, onClose, mode, setMode }) {
     const landingRef = useRef(null);
     const demoPreviewRef = useRef(null);
     const touchYRef = useRef(null);
+    const [demoProgress, setDemoProgress] = useState(0);
+    const updateDemoProgress = demo => {
+        if (!demo) return;
+        const max = demo.scrollHeight - demo.clientHeight;
+        setDemoProgress(max > 2 ? Math.max(0, Math.min(1, demo.scrollTop / max)) : 0);
+    };
     const routeScrollToDemo = (deltaY, source = 'wheel') => {
         const demo = demoPreviewRef.current;
         if (!demo || !deltaY || Math.abs(deltaY) < 1) return false;
@@ -639,6 +645,7 @@ function WelcomeModal({ onEmpty, canClose, onClose, mode, setMode }) {
         const limit = source === 'touch' ? 42 : 34;
         const softenedDelta = Math.sign(deltaY) * Math.min(Math.abs(deltaY) * speed, limit);
         demo.scrollTop = Math.max(0, Math.min(max, before + softenedDelta));
+        updateDemoProgress(demo);
         return demo.scrollTop !== before;
     };
     const onLandingWheel = e => {
@@ -684,7 +691,8 @@ function WelcomeModal({ onEmpty, canClose, onClose, mode, setMode }) {
             <style>{`
                 .landing-scrollbar{scrollbar-width:thin;scrollbar-color:${ACC}55 transparent}
                 .landing-scrollbar::-webkit-scrollbar{width:8px;height:8px}.landing-scrollbar::-webkit-scrollbar-thumb{background:${ACC}55;border-radius:99px}.landing-scrollbar::-webkit-scrollbar-track{background:transparent}
-                @media (max-width: 900px){.landing-demo-shell{max-width:calc(100vw - 1.5rem)!important;margin-bottom:3.5rem!important}.landing-demo-card{transform:none!important;border-radius:16px!important}.landing-app-preview{max-height:78vh!important}.landing-section{padding-top:4rem!important;padding-bottom:4rem!important}.landing-trust-grid{gap:1rem!important}.landing-bento{grid-template-columns:1fr!important}.landing-feature-large{grid-column:auto!important}.landing-feature-card{min-height:220px!important;padding:2rem 1.5rem!important}.landing-feature-card p{max-width:100%!important}.landing-demo-side{display:none!important}}
+                .landing-demo-pin{position:relative;min-height:calc(min(82vh,920px) + 220px);margin-bottom:6rem}.landing-demo-shell{position:sticky;top:88px;z-index:2}
+                @media (max-width: 900px){.landing-demo-pin{min-height:auto;margin-bottom:3.5rem!important}.landing-demo-shell{position:relative!important;top:auto!important;max-width:calc(100vw - 1.5rem)!important}.landing-demo-card{transform:none!important;border-radius:16px!important}.landing-app-preview{max-height:78vh!important}.landing-section{padding-top:4rem!important;padding-bottom:4rem!important}.landing-trust-grid{gap:1rem!important}.landing-bento{grid-template-columns:1fr!important}.landing-feature-large{grid-column:auto!important}.landing-feature-card{min-height:220px!important;padding:2rem 1.5rem!important}.landing-feature-card p{max-width:100%!important}.landing-demo-side{display:none!important}}
                 @media (max-width: 640px){.landing-hero{padding:3.25rem .9rem 2rem!important}.landing-hero h1{font-size:clamp(2.35rem,14vw,3.55rem)!important;line-height:1.02!important}.landing-hero p{font-size:1rem!important}.landing-nav{padding:.85rem 1rem!important}.landing-open-label{display:none!important}.landing-app-preview{max-height:72vh!important}.landing-demo-windowbar{padding:.7rem!important}.landing-section{padding-left:.9rem!important;padding-right:.9rem!important}.landing-footer{justify-content:center!important;text-align:center!important}}
                 @media (max-width: 430px){.landing-brand-text{display:none!important}.landing-app-preview{max-height:68vh!important}.landing-demo-shell{padding:0 .6rem!important;max-width:100vw!important}.landing-feature-card{min-height:200px!important}}
             `}</style>
@@ -707,15 +715,21 @@ function WelcomeModal({ onEmpty, canClose, onClose, mode, setMode }) {
                 </div>
             </header>
 
-            <div className="landing-demo-shell" style={{ maxWidth: 1180, margin: '0 auto 6rem', padding: '0 1rem', perspective: 1000 }}>
-                <div className="landing-demo-card" style={{ width: '100%', maxWidth: '100%', background: L.surface, border: `1px solid ${L.border}`, borderRadius: 20, boxShadow: L.shadow, overflow: 'hidden', transform: isMobile ? 'none' : 'rotateX(3deg) scale(.985)' }}>
-                    <div className="landing-demo-windowbar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '1rem', borderBottom: `1px solid ${L.border}`, background: L.surfaceSoft }}>
-                        <div style={{ display: 'flex', gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#FF5F56' }} /><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#FFBD2E' }} /><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#27C93F' }} /></div>
-                        <span style={{ color: L.textFaint, fontSize: '.72rem', fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase' }}>Démo interactive</span>
+            <section className="landing-demo-pin">
+                <div className="landing-demo-shell" style={{ maxWidth: 1180, margin: '0 auto', padding: '0 1rem', perspective: 1000 }}>
+                    <div className="landing-demo-card" style={{ width: '100%', maxWidth: '100%', background: L.surface, border: `1px solid ${L.border}`, borderRadius: 20, boxShadow: L.shadow, overflow: 'hidden', transform: isMobile ? 'none' : 'rotateX(3deg) scale(.985)' }}>
+                        <div className="landing-demo-windowbar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '1rem', borderBottom: `1px solid ${L.border}`, background: L.surfaceSoft }}>
+                            <div style={{ display: 'flex', gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#FF5F56' }} /><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#FFBD2E' }} /><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#27C93F' }} /></div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                                <span style={{ color: L.textFaint, fontSize: '.72rem', fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Démo interactive</span>
+                                <span style={{ color: ACC, fontSize: '.72rem', fontWeight: 800, fontVariantNumeric: 'tabular-nums', minWidth: 38, textAlign: 'right' }}>{Math.round(demoProgress * 100)}%</span>
+                            </div>
+                        </div>
+                        <div style={{ height: 3, background: T.dark ? 'rgba(255,255,255,.05)' : 'rgba(10,10,20,.06)' }}><div style={{ width: `${demoProgress * 100}%`, height: '100%', background: `linear-gradient(90deg,${ACC},#FF6B6B)`, transition: 'width .16s ease-out', boxShadow: `0 0 12px ${ACC}88` }} /></div>
+                        <div ref={demoPreviewRef} onScroll={e => updateDemoProgress(e.currentTarget)} className="landing-app-preview landing-scrollbar" style={{ maxHeight: 'min(82vh,920px)', overflow: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}><LandingDemoMockup /></div>
                     </div>
-                    <div ref={demoPreviewRef} className="landing-app-preview landing-scrollbar" style={{ maxHeight: 'min(82vh,920px)', overflow: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}><LandingDemoMockup /></div>
                 </div>
-            </div>
+            </section>
 
             <section className="landing-section" style={{ padding: '6rem 1rem', maxWidth: 1100, margin: '0 auto' }}>
                 <div style={{ textAlign: 'center', marginBottom: '4rem' }}><h2 style={{ fontSize: 'clamp(2rem,4vw,2.5rem)', fontWeight: 800, letterSpacing: '-.03em', margin: '0 0 1rem', color: L.text }}>Une intimité totale sur vos finances.</h2><p style={{ fontSize: 'clamp(1rem,2vw,1.25rem)', color: L.textSoft, maxWidth: 700, margin: '0 auto', lineHeight: 1.6 }}>Pas de création de compte. Pas de synchronisation bancaire requise. Vous gardez le contrôle total.</p></div>
