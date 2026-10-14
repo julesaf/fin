@@ -17,3 +17,33 @@ input,
 select {
     font: inherit;
 }
+
+.simulation button:focus-visible,
+.simulation input:focus-visible,
+.simulation select:focus-visible {
+    outline: 2px solid #38BDF8;
+    outline-offset: 3px;
+}
+
+.simulation input[type="checkbox"] {
+    accent-color: #E8364A;
+    flex-shrink: 0;
+}
+
+.simulation .recharts-legend-item-text {
+    overflow-wrap: anywhere;
+}
+
+.simulation .recharts-default-legend {
+    max-height: 72px;
+    overflow-y: auto;
+}
+
+.simulation td,
+.simulation th {
+    font-variant-numeric: tabular-nums;
+}
+
+.simulation strong {
+    overflow-wrap: anywhere;
+}
