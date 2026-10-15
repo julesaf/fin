@@ -1373,21 +1373,110 @@ const SIMULATION_REFERENCE_HELP = {
     ]
 };
 
-function SimulationNumber({ label, value, onChange, min = 0, max, integer = false, unit = '', help = '' }: { label: string; value: number; onChange: (value: number) => void; min?: number; max?: number; integer?: boolean; unit?: string; help?: string }) {
+const TAX_PRESETS = [
+    { value: 0, label: 'Exonéré · 0 %' },
+    { value: .172, label: 'Prélèvements sociaux · 17,2 %' },
+    { value: .3, label: 'Flat tax · 30 %' },
+];
+const CRISIS_PRESETS = {
+    moderate: { label: 'Modérées', volatility: .12, crisisProbability: .05, crisisLossMin: .15, crisisLossMax: .3 },
+    severe: { label: 'Sévères', volatility: .18, crisisProbability: .1, crisisLossMin: .25, crisisLossMax: .45 },
+};
+const sameRate = (a: number, b: number) => Math.abs(a - b) < 1e-9;
+const compactEUR = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', notation: 'compact', maximumSignificantDigits: 3 });
+const fRate = (rate: number) => Number.isFinite(rate) ? `${(rate * 100).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} %` : '–';
+const parseNumber = (text: string) => { const clean = text.replace(/[\s\u00a0\u202f€%]/g, '').replace(',', '.'); return clean === '' ? NaN : Number(clean); };
+const rawNumber = (value: number) => Number.isFinite(value) ? String(Number(value.toFixed(6))).replace('.', ',') : '';
+
+function simulationExample(): SimulationPocket[] {
+    return [
+        { ...createSimulationPocket(0, PCOLS[1]), name: 'PEA', initialCapital: 10000, annualContribution: 2400, annualReturnRate: .07, taxRate: .172 },
+        { ...createSimulationPocket(1, PCOLS[2]), name: 'Assurance-vie', initialCapital: 5000, annualContribution: 1200, annualReturnRate: .045, taxRate: .172 },
+        { ...createSimulationPocket(2, PCOLS[3]), name: 'Livret', initialCapital: 3000, annualContribution: 0, annualReturnRate: .024, taxRate: 0, crisisSensitive: false },
+    ];
+}
+
+function SimulationNumber({ label, value, onChange, min = 0, max, integer = false, unit = '', help = '', slider }: { label: string; value: number; onChange: (value: number) => void; min?: number; max?: number; integer?: boolean; unit?: string; help?: string; slider?: { min: number; max: number; step: number } }) {
     const T = useT();
     const id = useId();
+    const [text, setText] = useState<string | null>(null);
     const invalid = !Number.isFinite(value) || value < min || (max !== undefined && value > max) || (integer && !Number.isInteger(value));
+    const shown = text ?? (unit === '€' && Number.isFinite(value) ? new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(value) : rawNumber(value));
+    const input = <div style={{ position: 'relative', minWidth: 0, width: slider ? 104 : '100%', flexShrink: 0 }}>
+        <Inp id={id} type="text" inputMode={integer ? 'numeric' : 'decimal'} value={shown} aria-invalid={invalid} aria-describedby={invalid ? `${id}-error` : undefined}
+            onFocus={() => setText(rawNumber(value))} onBlur={() => setText(null)}
+            onChange={event => { setText(event.target.value); onChange(parseNumber(event.target.value)); }}
+            style={{ borderColor: invalid ? LOSSC : T.brd, minWidth: 0, paddingRight: unit ? '2.4rem' : '.75rem', textAlign: slider ? 'right' : 'left' }} />
+        {unit && <span aria-hidden="true" style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: '.7rem', color: T.t2, pointerEvents: 'none' }}>{unit}</span>}
+    </div>;
+    const labelRow = <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginBottom: slider ? 0 : 4, minWidth: 0 }}>
+        <label htmlFor={id} style={{ fontSize: '.68rem', color: T.t2 }}>{label}</label>
+        {help && <InfoBtn title={label} lines={[{ type: 'text', html: help }]} />}
+    </div>;
     return <div style={{ minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginBottom: 4 }}>
-            <label htmlFor={id} style={{ fontSize: '.68rem', color: T.t2 }}>{label}{unit && ` (${unit})`}</label>
-            {help && <InfoBtn title={label} lines={[{ type: 'text', html: help }]} />}
-        </div>
-        <Inp id={id} type="number" min={min} max={max} step={integer ? 1 : 'any'} value={Number.isFinite(value) ? value : ''} aria-invalid={invalid} aria-describedby={invalid ? `${id}-error` : undefined} onChange={event => onChange(event.target.value === '' ? NaN : Number(event.target.value))} style={{ borderColor: invalid ? LOSSC : T.brd, minWidth: 0 }} />
+        {slider
+            ? <>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>{labelRow}{input}</div>
+                <input type="range" aria-label={`${label} (curseur)`} min={slider.min} max={slider.max} step={slider.step} value={Number.isFinite(value) ? Math.min(slider.max, Math.max(slider.min, value)) : slider.min} onChange={event => { setText(null); onChange(Number(event.target.value)); }} style={{ width: '100%', accentColor: ACC, marginTop: 6 }} />
+            </>
+            : <>{labelRow}{input}</>}
         {invalid && <div id={`${id}-error`} role="alert" style={{ color: LOSSC, fontSize: '.62rem', marginTop: 3 }}>Valeur {integer ? 'entière ' : ''}≥ {min}{max !== undefined ? ` et ≤ ${max}` : ''}.</div>}
     </div>;
 }
 
-function SimulationPlot({ data, years, end, start = 0, income = false, children }) {
+function Segmented({ value, options, onChange, label }: { value: string; options: { value: string; label: string }[]; onChange: (value: string) => void; label: string }) {
+    const T = useT();
+    return <div role="radiogroup" aria-label={label} style={{ display: 'grid', gridTemplateColumns: `repeat(${options.length},minmax(0,1fr))`, background: T.s2, borderRadius: 10, padding: 3, gap: 2 }}>
+        {options.map(option => {
+            const active = value === option.value;
+            return <button key={option.value} type="button" role="radio" aria-checked={active} onClick={() => onChange(option.value)} style={{ border: 'none', borderRadius: 8, padding: '.42rem .25rem', fontSize: '.7rem', fontWeight: active ? 700 : 500, background: active ? T.s1 : 'transparent', color: active ? T.t1 : T.t2, cursor: 'pointer', fontFamily: 'inherit', boxShadow: active ? '0 1px 3px rgba(0,0,0,.25)' : 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{option.label}</button>;
+        })}
+    </div>;
+}
+
+function SimulationPocketCard({ pocket, index, open, onToggle, onChange, onRemove, canRemove }: { pocket: SimulationPocket; index: number; open: boolean; onToggle: () => void; onChange: (patch: Partial<SimulationPocket>) => void; onRemove: () => void; canRemove: boolean }) {
+    const T = useT();
+    const preset = TAX_PRESETS.find(item => sameRate(item.value, pocket.taxRate));
+    const [customTax, setCustomTax] = useState(!preset);
+    const fallbackName = `Poche ${index + 1}`;
+    const summary = `${Number.isFinite(pocket.initialCapital) ? compactEUR.format(pocket.initialCapital) : '–'} · +${Number.isFinite(pocket.annualContribution) ? compactEUR.format(pocket.annualContribution) : '–'}/an · ${fRate(pocket.annualReturnRate)}`;
+    const panelId = `simulation-pocket-${pocket.id}`;
+    return <div style={{ borderRadius: 12, background: T.s1, border: `1px solid ${open ? pocket.color + '66' : T.brd}`, overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '.6rem .6rem .6rem .85rem' }}>
+            <button type="button" onClick={onToggle} aria-expanded={open} aria-controls={panelId} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 'none', color: T.t1, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'inherit' }}>
+                <Dot c={pocket.color} />
+                <span style={{ minWidth: 0, flex: 1 }}>
+                    <span style={{ display: 'block', fontSize: '.78rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pocket.name || fallbackName}</span>
+                    <span style={{ display: 'block', fontSize: '.64rem', color: T.t2, fontVariantNumeric: 'tabular-nums', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{summary}{pocket.crisisSensitive === false ? ' · hors crises' : ''}</span>
+                </span>
+                <ChevronDown size={15} style={{ flexShrink: 0, color: T.t2, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} />
+            </button>
+            <Btn ghost disabled={!canRemove} title={canRemove ? 'Supprimer cette poche' : 'Conserver au moins une poche'} aria-label={`Supprimer ${pocket.name || fallbackName}`} onClick={onRemove} style={{ padding: 6, minHeight: 28 }}><Trash2 size={13} /></Btn>
+        </div>
+        {open && <div id={panelId} style={{ display: 'grid', gap: 12, padding: '.85rem', borderTop: `1px solid ${T.brd}` }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0,1fr)', gap: 8, alignItems: 'stretch' }}>
+                <label style={{ display: 'grid', gridTemplateRows: 'auto 1fr', gap: 4, fontSize: '.68rem', color: T.t2 }}>Couleur<input type="color" value={pocket.color} onChange={event => onChange({ color: event.target.value })} style={{ width: 44, height: '100%', minHeight: 38, padding: 2, border: `1px solid ${T.brd}`, borderRadius: 8, background: T.inp, cursor: 'pointer', boxSizing: 'border-box' }} /></label>
+                <label style={{ display: 'grid', gap: 4, fontSize: '.68rem', color: T.t2, minWidth: 0 }}>Nom<Inp value={pocket.name} maxLength={48} onChange={event => onChange({ name: event.target.value })} onBlur={() => { if (!pocket.name.trim()) onChange({ name: fallbackName }); }} /></label>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 10 }}>
+                <SimulationNumber label="Capital initial" unit="€" value={pocket.initialCapital} onChange={value => onChange({ initialCapital: value })} />
+                <SimulationNumber label="Versement annuel" unit="€" value={pocket.annualContribution} onChange={value => onChange({ annualContribution: value })} />
+                <SimulationNumber label="Rendement annuel" unit="%" min={-100} value={pocket.annualReturnRate * 100} onChange={value => onChange({ annualReturnRate: value / 100 })} />
+                <div style={{ minWidth: 0 }}>
+                    <Lbl ch="Fiscalité à la sortie" />
+                    <Sel aria-label="Fiscalité à la sortie" value={customTax || !preset ? 'custom' : String(preset.value)} onChange={event => { if (event.target.value === 'custom') setCustomTax(true); else { setCustomTax(false); onChange({ taxRate: Number(event.target.value) }); } }}>
+                        {TAX_PRESETS.map(item => <option key={item.value} value={String(item.value)}>{item.label}</option>)}
+                        <option value="custom">Personnalisée…</option>
+                    </Sel>
+                </div>
+            </div>
+            {(customTax || !preset) && <SimulationNumber label="Taux de fiscalité personnalisé" unit="%" max={100} value={pocket.taxRate * 100} onChange={value => onChange({ taxRate: value / 100 })} help="Taux appliqué à la part de gains contenue dans chaque retrait. Ce n’est pas une règle fiscale automatique." />}
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}><label style={{ fontSize: '.7rem', color: T.t2, display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={pocket.crisisSensitive !== false} onChange={event => onChange({ crisisSensitive: event.target.checked })} />Exposée aux crises</label><InfoBtn title={`Exposition aux crises · ${pocket.name || fallbackName}`} lines={[{ type: 'text', html: 'Cochée, cette poche reçoit la volatilité et les baisses définies dans « Crises de marché ». Décochée (livret, fonds euros…), elle conserve son rendement annuel constant. Ses versements, retraits et sa fiscalité restent appliqués. Sans simulation de crises, ce choix n’a pas d’effet.' }]} /></div>
+        </div>}
+    </div>;
+}
+
+function SimulationPlot({ data, years, end, start = 0, selected, onSelect, children }: { data: any[]; years: number; end: number; start?: number; selected?: number; onSelect?: (year: number) => void; children?: any }) {
     const T = useT();
     const { isMobile } = useBreakpoint();
     const ticks = [...new Set([start, Math.round((start + years) / 2), years, Math.round((years + end) / 2), end])].filter(value => value >= start && value <= end);
@@ -1403,28 +1492,41 @@ function SimulationPlot({ data, years, end, start = 0, income = false, children 
     const axisTicks = Array.from({ length: Math.round((axisMax - axisMin) / step) + 1 }, (_, index) => Number((axisMin + index * step).toPrecision(12)));
     const axisFormat = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', notation: 'compact', maximumSignificantDigits: 3 });
     const axisWidth = Math.max(48, ...axisTicks.map(value => axisFormat.format(value).length * 6 + 14));
-    return <div style={{ height: isMobile ? 340 : 300, minWidth: 0, marginTop: 12 }}>
+    const handleClick = (state: any) => {
+        if (!onSelect || !state) return;
+        const year = Number(state.activeLabel ?? data[Number(state.activeTooltipIndex ?? state.activeIndex)]?.year);
+        if (Number.isInteger(year) && year >= 1) onSelect(year);
+    };
+    return <div style={{ height: isMobile ? 300 : 320, minWidth: 0, marginTop: 10, cursor: onSelect ? 'pointer' : undefined }}>
         <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={data} margin={{ top: 10, right: 8, left: 0, bottom: 5 }}>
+            <ComposedChart data={data} margin={{ top: 10, right: 18, left: 0, bottom: 5 }} onClick={handleClick}>
                 <CartesianGrid stroke={T.brd} vertical={false} />
-                <XAxis dataKey="year" type="number" domain={start === end ? [start - 1, end + 1] : [start, end]} ticks={ticks} tick={{ fill: T.t2, fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={20} />
+                {years > start && <ReferenceArea x1={start} x2={years} fill={T.t2} fillOpacity={.035} stroke="none" ifOverflow="hidden" label={{ value: 'Épargne', position: 'insideTopLeft', fill: T.t2, fontSize: 10 }} />}
+                {end > years && <ReferenceArea x1={years} x2={end} fill={GRN} fillOpacity={.05} stroke="none" ifOverflow="hidden" label={{ value: 'Retraits', position: 'insideTopRight', fill: T.t2, fontSize: 10 }} />}
+                <XAxis dataKey="year" type="number" domain={start === end ? [start - 1, end + 1] : [start, end]} ticks={ticks} tick={{ fill: T.t2, fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={20} tickFormatter={value => `${value} a`} />
                 <YAxis width={axisWidth} domain={[axisMin, axisMax]} ticks={axisTicks} tick={{ fill: T.t2, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={value => axisFormat.format(value)} />
                 <RT contentStyle={{ background: T.s1, border: `1px solid ${T.brd}`, borderRadius: 8, color: T.t1, fontSize: 12 }} labelFormatter={value => `Année ${value} · ${Number(value) <= years ? 'Épargne' : 'Retraits'}`} formatter={(value, name) => [Array.isArray(value) ? `${fEUR(value[0])} à ${fEUR(value[1])}` : fEUR(value), name]} />
                 <Legend iconType="plainline" verticalAlign="bottom" height={isMobile ? 78 : 36} wrapperStyle={{ fontSize: 11, paddingTop: 12, lineHeight: '20px', color: T.t2 }} />
-                <ReferenceLine x={years} stroke={T.t2} strokeDasharray="4 4" />
+                {years > start && <ReferenceLine x={years} stroke={T.t2} strokeDasharray="4 4" />}
+                {selected !== undefined && selected >= start && selected <= end && <ReferenceLine x={selected} stroke={VALC} strokeOpacity={.7} />}
                 {children}
             </ComposedChart>
         </ResponsiveContainer>
     </div>;
 }
 
-function SimulationPage({ config, onChange, onReset }: { config: SimulationConfig; onChange: (value: SimulationConfig) => void; onReset: () => void }) {
+function SimulationPage({ config, onChange, onReset, portfolio = [] }: { config: SimulationConfig; onChange: (value: SimulationConfig) => void; onReset: () => void; portfolio?: any[] }) {
     const T = useT(); const { isTablet, isMobile } = useBreakpoint();
     const { th, thR, td, tdR } = useTS();
     const [draft, setDraft] = useState(config);
     const [parametersOpen, setParametersOpen] = useState(false);
     const [selected, setSelected] = useState<number | null>(null);
     const [removeId, setRemoveId] = useState<string | null>(null);
+    const [openPocket, setOpenPocket] = useState<string | null>(config.pockets.length === 1 ? config.pockets[0].id : null);
+    const [customCrisis, setCustomCrisis] = useState(false);
+    const [tableOpen, setTableOpen] = useState(true);
+    const [tableStep, setTableStep] = useState('5');
+    const [helpOpen, setHelpOpen] = useState(false);
     const [attempt, setAttempt] = useState(0);
     const workerRef = useRef<{ worker: Worker; timer: ReturnType<typeof setTimeout> } | null>(null);
     const [job, setJob] = useState<{ key: string; completed: number; result?: MonteCarloResult; error?: string }>({ key: '', completed: 0 });
@@ -1437,8 +1539,9 @@ function SimulationPage({ config, onChange, onReset }: { config: SimulationConfi
         catch (error) { return { rows: [], error: (error as Error).message }; }
     }, [key, validationError]);
     const error = validationError || baseline.error;
+    const isEmpty = draft.pockets.every(pocket => !(pocket.initialCapital > 0) && !(pocket.annualContribution > 0));
     useEffect(() => {
-        if (!draft.stochastic || error) return;
+        if (!draft.stochastic || error || isEmpty) return;
         let active = true;
         setJob({ key, completed: 0 });
         let worker: Worker;
@@ -1457,17 +1560,45 @@ function SimulationPage({ config, onChange, onReset }: { config: SimulationConfi
         const timer = setTimeout(() => worker.postMessage({ key, config: draft }), 350);
         workerRef.current = { worker, timer };
         return () => { active = false; clearTimeout(timer); worker.terminate(); if (workerRef.current?.worker === worker) workerRef.current = null; };
-    }, [draft.stochastic, key, error, attempt]);
+    }, [draft.stochastic, key, error, isEmpty, attempt]);
     const change = (next: SimulationConfig) => {
         setDraft(next);
         try { onChange(readSimulationConfig(next)); } catch { }
     };
     const updatePocket = (id: string, patch: Partial<SimulationPocket>) => change({ ...draft, pockets: draft.pockets.map(pocket => pocket.id === id ? { ...pocket, ...patch } : pocket) });
     const updateOption = (name: keyof SimulationConfig['options'], value: number) => change({ ...draft, options: { ...draft.options, [name]: value } });
+    const replacePockets = (pockets: SimulationPocket[], message: string) => {
+        if (!isEmpty && !confirm(message)) return;
+        change({ ...draft, pockets });
+        setOpenPocket(null); setSelected(null);
+    };
+    const importable = portfolio.filter(pocket => pocket.valActu > 0);
+    const fromPortfolio = () => replacePockets(importable.map((pocket, index) => ({
+        ...createSimulationPocket(index, /^#[0-9a-f]{6}$/i.test(pocket.couleur || '') ? pocket.couleur : PCOLS[index % PCOLS.length]),
+        name: String(pocket.nom || '').trim().slice(0, 48) || `Poche ${index + 1}`,
+        initialCapital: Math.round(pocket.valActu),
+        annualReturnRate: typeof pocket.xirr === 'number' && Number.isFinite(pocket.xirr) ? Math.round(Math.min(.12, Math.max(0, pocket.xirr)) * 1000) / 1000 : .05,
+    })), 'Remplacer les poches simulées par celles de votre portefeuille ?');
+    const loadExample = () => replacePockets(simulationExample(), 'Remplacer les poches simulées par l’exemple ?');
+    const addPocket = () => {
+        const pocket = createSimulationPocket(draft.pockets.length, PCOLS[draft.pockets.length % PCOLS.length]);
+        change({ ...draft, pockets: [...draft.pockets, pocket] });
+        setOpenPocket(pocket.id);
+    };
+    const startManual = () => { setParametersOpen(true); setOpenPocket(draft.pockets[0].id); setTimeout(() => document.getElementById(`simulation-pocket-${draft.pockets[0].id}`)?.querySelector('input[inputmode]')?.focus(), 50); };
+    const matchedCrisis = (Object.keys(CRISIS_PRESETS) as (keyof typeof CRISIS_PRESETS)[]).find(name => (['volatility', 'crisisProbability', 'crisisLossMin', 'crisisLossMax'] as const).every(field => sameRate(CRISIS_PRESETS[name][field], draft.options[field])));
+    const crisisMode = !draft.stochastic ? 'none' : customCrisis || !matchedCrisis ? 'custom' : matchedCrisis;
+    const setCrisisMode = (mode: string) => {
+        if (mode === 'none') { setCustomCrisis(false); change({ ...draft, stochastic: false }); return; }
+        if (mode === 'custom') { setCustomCrisis(true); change({ ...draft, stochastic: true }); return; }
+        const { label, ...options } = CRISIS_PRESETS[mode as keyof typeof CRISIS_PRESETS];
+        setCustomCrisis(false);
+        change({ ...draft, stochastic: true, options: { ...draft.options, ...options } });
+    };
     const scenarios = draft.stochastic && job.key === key && !error ? job.result : undefined;
     const jobError = draft.stochastic && job.key === key ? job.error : '';
-    const busy = !error && draft.stochastic && (job.key !== key || (!job.result && !job.error));
-    const rows = error ? [] : draft.stochastic ? scenarios?.medianCapitalRows || [] : baseline.rows;
+    const busy = !error && !isEmpty && draft.stochastic && (job.key !== key || (!job.result && !job.error));
+    const rows = error || isEmpty ? [] : draft.stochastic ? scenarios?.medianCapitalRows || [] : baseline.rows;
     const current = rows[Math.max(0, Math.min((selected ?? draft.years) - 1, rows.length - 1))];
     const final = rows[draft.years - 1];
     const endpoint = rows.at(-1);
@@ -1476,97 +1607,131 @@ function SimulationPage({ config, onChange, onReset }: { config: SimulationConfi
     const projectionCapital = scenarios?.at(-1)?.median ?? endpoint?.capital;
     const projectionMonthlyNet = scenarios?.income.median ?? (endpoint ? endpoint.net / 12 : undefined);
     const medianMonthlyNet = (year: number) => scenarios?.annualIncomes[year - 1]?.median;
-    const initial = draft.pockets.reduce((sum, pocket) => sum + pocket.initialCapital, 0);
-    const plot = [{ year: 0, baseline: initial, median: initial, band: [initial, initial] }, ...rows.map((row, index) => ({
+    const initial = draft.pockets.reduce((sum, pocket) => sum + (Number.isFinite(pocket.initialCapital) ? pocket.initialCapital : 0), 0);
+    const contributions = draft.pockets.reduce((sum, pocket) => sum + (Number.isFinite(pocket.annualContribution) ? pocket.annualContribution : 0), 0);
+    const paidAtHorizon = final ? final.pockets.reduce((sum, item) => sum + item.paid, 0) : 0;
+    const stacked = !scenarios && !draft.stochastic && draft.pockets.length > 1;
+    const plot = [{ year: 0, baseline: initial, median: initial, band: [initial, initial], ...Object.fromEntries(draft.pockets.map((pocket, index) => [`p${index}`, pocket.initialCapital])) }, ...rows.map((row, index) => ({
         year: row.year, baseline: baseline.rows[index]?.capital, median: scenarios?.[index]?.median, band: scenarios?.[index] ? [scenarios[index].low, scenarios[index].high] : undefined,
+        ...(stacked ? Object.fromEntries(baseline.rows[index].pockets.map((item, pocketIndex) => [`p${pocketIndex}`, item.capital])) : {}),
     }))];
-    const incomePlot = baseline.rows.slice(draft.years - 1).map((row, index) => ({ ...scenarios?.incomes[index], year: row.year, baseline: row.net / 12 }));
+    const incomePlot = isEmpty ? [] : baseline.rows.slice(draft.years - 1).map((row, index) => ({ ...scenarios?.incomes[index], year: row.year, baseline: row.net / 12 }));
     const money = (value: number) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2 }).format(value);
+    const selectYear = (year: number) => setSelected(Math.min(year, rows.length || year));
     const exportCsv = () => {
         if (busy || error || !rows.length) return;
-        const url = URL.createObjectURL(new Blob([simulationCsv(draft.pockets.map((pocket, index) => ({ ...pocket, name: `Poche ${index + 1}` })), rows, scenarios?.annualIncomes)], { type: 'text/csv;charset=utf-8;' }));
+        const url = URL.createObjectURL(new Blob([simulationCsv(draft.pockets, rows, scenarios?.annualIncomes)], { type: 'text/csv;charset=utf-8;' }));
         const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'simulation-patrimoniale.csv'; anchor.click();
         setTimeout(() => URL.revokeObjectURL(url), 200);
     };
-    const fieldGrid = { display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 10 };
+    const step = Number(tableStep);
+    const tableRows = rows.filter(row => step === 1 || row.year === 1 || row.year % step === 0 || row.year === draft.years || row.year === draft.projection || row.year === current?.year);
     const table = (headers: string[], children) => <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingTop: 8 }}><table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}><thead><tr>{headers.map((label, index) => <th key={label} style={index === 0 ? th : thR}>{label}</th>)}</tr></thead><tbody>{children}</tbody></table></div>;
+    const median = scenarios ? ' médian' : '';
+    const withdrawalYears = draft.projection - draft.years;
+    const pocketName = (index: number) => draft.pockets[index]?.name || `Poche ${index + 1}`;
+
+    const parameters = <aside id="simulation-parameters" aria-label="Paramètres de simulation" style={{ display: !isTablet || parametersOpen ? 'grid' : 'none', gap: 12, minWidth: 0 }}>
+        <SC title="1 · Horizon"><div style={{ display: 'grid', gap: 14, paddingTop: 12 }}>
+            <SimulationNumber label="Durée d’épargne" unit="ans" min={1} max={100} integer slider={{ min: 1, max: 50, step: 1 }} value={draft.years} onChange={value => { setSelected(null); change({ ...draft, years: value, projection: Number.isFinite(value) ? Math.max(value, draft.projection) : draft.projection }); }} />
+            <SimulationNumber label="Retrait annuel" unit="%" max={100} slider={{ min: 0, max: 10, step: .5 }} value={draft.withdrawal * 100} onChange={value => change({ ...draft, withdrawal: value / 100 })} help="Part du patrimoine retirée chaque année après la phase d’épargne. 4 % est un repère courant, sans garantie." />
+            <SimulationNumber label="Fin de projection" unit="ans" min={Number.isFinite(draft.years) ? draft.years : 1} max={150} integer slider={{ min: Number.isFinite(draft.years) ? Math.min(draft.years, 100) : 1, max: 100, step: 1 }} value={draft.projection} onChange={value => { setSelected(null); change({ ...draft, projection: value }); }} help="Nombre total d’années simulées, épargne comprise. Au-delà de la durée d’épargne, les versements cessent et les retraits commencent." />
+        </div></SC>
+        <SC title="2 · Poches" action={<div style={{ display: 'flex', gap: 6 }}>
+            <Btn ghost disabled={!importable.length} onClick={fromPortfolio} title={importable.length ? 'Reprendre la valeur actuelle et le XIRR de vos poches réelles' : 'Aucune poche valorisée dans votre portefeuille'} style={{ padding: '.35rem .6rem', fontSize: '.7rem' }}><Upload size={12} />Portefeuille</Btn>
+            <Btn primary onClick={addPocket} style={{ padding: '.35rem .7rem', fontSize: '.7rem' }}><Plus size={12} />Ajouter</Btn>
+        </div>}>
+            <div style={{ display: 'grid', gap: 12, paddingTop: 12 }}>
+                {draft.pockets.map((pocket, index) => <SimulationPocketCard key={pocket.id} pocket={pocket} index={index} open={openPocket === pocket.id} onToggle={() => setOpenPocket(openPocket === pocket.id ? null : pocket.id)} onChange={patch => updatePocket(pocket.id, patch)} onRemove={() => setRemoveId(pocket.id)} canRemove={draft.pockets.length > 1} />)}
+            </div>
+        </SC>
+        <SC title="3 · Crises de marché" action={<InfoBtn {...SIMULATION_CRISIS_HELP} />}><div style={{ display: 'grid', gap: 10, paddingTop: 12 }}>
+            <Segmented label="Simulation des crises" value={crisisMode} onChange={setCrisisMode} options={[{ value: 'none', label: 'Aucune' }, { value: 'moderate', label: 'Modérées' }, { value: 'severe', label: 'Sévères' }, { value: 'custom', label: 'Perso.' }]} />
+            <div style={{ fontSize: '.66rem', color: T.t2, lineHeight: 1.5 }}>
+                {crisisMode === 'none' && 'Rendement constant chaque année, sans volatilité ni crise.'}
+                {crisisMode !== 'none' && `${draft.options.paths.toLocaleString('fr-FR')} scénarios · volatilité ${fRate(draft.options.volatility)} · crise ${fRate(draft.options.crisisProbability)}/an · baisse de ${fRate(draft.options.crisisLossMin)} à ${fRate(draft.options.crisisLossMax)}.`}
+            </div>
+            {crisisMode === 'custom' && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 10 }}>
+                <SimulationNumber label="Volatilité annuelle" unit="%" max={100} value={draft.options.volatility * 100} onChange={value => updateOption('volatility', value / 100)} help="Écart-type du choc annuel commun aux seules poches exposées aux crises, ajouté à leur rendement estimé. 0 % supprime ces variations." />
+                <SimulationNumber label="Crise par an" unit="%" max={100} value={draft.options.crisisProbability * 100} onChange={value => updateOption('crisisProbability', value / 100)} help="Probabilité indépendante chaque année. 5 % correspond à une crise tous les 20 ans en moyenne, sans calendrier garanti." />
+                <SimulationNumber label="Baisse minimale" unit="%" max={draft.options.crisisLossMax * 100} value={draft.options.crisisLossMin * 100} onChange={value => updateOption('crisisLossMin', value / 100)} help="À chaque crise, une baisse est tirée uniformément entre les deux bornes et appliquée après le rendement aux poches exposées." />
+                <SimulationNumber label="Baisse maximale" unit="%" min={draft.options.crisisLossMin * 100} max={100} value={draft.options.crisisLossMax * 100} onChange={value => updateOption('crisisLossMax', value / 100)} help="Borne supérieure de la perte de crise. Min = max reproduit une perte fixe. +5 % puis −30 % donne −26,5 %." />
+            </div>}
+        </div></SC>
+    </aside>;
+
+    const emptyState = <SC><div style={{ display: 'grid', justifyItems: 'center', textAlign: 'center', gap: 12, padding: isMobile ? '1.5rem .5rem' : '3rem 2rem' }}>
+        <div style={{ width: 48, height: 48, borderRadius: 14, display: 'grid', placeItems: 'center', background: `${VALC}18`, color: VALC }}><ChartNoAxesCombined size={24} /></div>
+        <h3 style={{ margin: 0, fontSize: '1rem' }}>Que pourrait devenir votre épargne ?</h3>
+        <p style={{ margin: 0, maxWidth: 460, color: T.t2, fontSize: '.76rem', lineHeight: 1.6 }}>Renseignez un capital de départ ou un versement annuel pour estimer votre patrimoine futur et le revenu net qu’il pourrait vous verser. Ces poches simulées n’affectent pas vos placements réels.</p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginTop: 4 }}>
+            <Btn primary onClick={loadExample}><ChartNoAxesCombined size={13} />Charger un exemple</Btn>
+            {importable.length > 0 && <Btn ghost onClick={fromPortfolio}><Upload size={13} />Partir de mon portefeuille</Btn>}
+            <Btn ghost onClick={startManual}><Pencil size={13} />Saisir mes poches</Btn>
+        </div>
+    </div></SC>;
+
     return <div className="simulation" style={{ minWidth: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: '1rem' }}>
-            <div><h2 style={{ margin: 0, fontSize: '.9rem', color: T.t1 }}>Simulation patrimoniale</h2><div style={{ fontSize: '.65rem', color: T.t2, marginTop: 3 }}>{draft.pockets.length} poche{draft.pockets.length > 1 ? 's' : ''} simulée{draft.pockets.length > 1 ? 's' : ''} · {draft.years} ans d’épargne</div></div>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}><InfoBtn {...SIMULATION_HELP} /><Btn ghost onClick={() => { if (confirm('Réinitialiser uniquement les paramètres de simulation ?')) onReset(); }} title="Réinitialiser la simulation" aria-label="Réinitialiser la simulation" style={{ padding: 8 }}><RotateCcw size={16} /></Btn></div>
+            <div><h2 style={{ margin: 0, fontSize: '.95rem', color: T.t1 }}>Simulation patrimoniale</h2><div style={{ fontSize: '.68rem', color: T.t2, marginTop: 3 }}>Projetez votre épargne et testez sa résistance aux crises, sans toucher à vos placements réels.</div></div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <Btn ghost onClick={() => setHelpOpen(true)} style={{ padding: '.4rem .7rem', fontSize: '.72rem' }}>Comment lire ?</Btn>
+                <Btn ghost onClick={() => { if (confirm('Réinitialiser uniquement les paramètres de simulation ?')) onReset(); }} title="Réinitialiser la simulation" aria-label="Réinitialiser la simulation" style={{ padding: 8 }}><RotateCcw size={16} /></Btn>
+            </div>
         </div>
-        <p style={{ margin: '0 0 16px', maxWidth: 850, color: T.t2, fontSize: '.76rem', lineHeight: 1.65 }}>Estimez le patrimoine et les revenus nets que votre épargne pourrait générer, puis évaluez leur résistance aux crises. Ces poches sont indépendantes de vos placements réels. Le rendement constant, sans volatilité ni crises, et les scénarios P10, médian et P90 illustrent des futurs possibles, sans garantie de résultat.</p>
-        {isTablet && <Btn ghost onClick={() => setParametersOpen(!parametersOpen)} aria-expanded={parametersOpen} aria-controls="simulation-parameters" style={{ marginBottom: 12, width: '100%', justifyContent: 'space-between' }}><span style={{ display: 'flex', gap: 6, alignItems: 'center' }}><SlidersHorizontal size={15} />Paramètres</span><ChevronDown size={15} style={{ transform: parametersOpen ? 'rotate(180deg)' : 'none' }} /></Btn>}
-        <div style={{ display: 'grid', gridTemplateColumns: isTablet ? 'minmax(0,1fr)' : '310px minmax(0,1fr)', gap: '1rem', alignItems: 'start' }}>
-            <aside id="simulation-parameters" aria-label="Paramètres de simulation" style={{ display: !isTablet || parametersOpen ? 'grid' : 'none', gap: 12, minWidth: 0 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}><strong style={{ fontSize: '.76rem' }}>Poches simulées</strong><Btn primary onClick={() => change({ ...draft, pockets: [...draft.pockets, createSimulationPocket(draft.pockets.length)] })}><Plus size={13} />Ajouter</Btn></div>
-                {draft.pockets.map((pocket, index) => <SC key={pocket.id} title={`Poche ${index + 1}`} action={<Btn ghost disabled={draft.pockets.length === 1} title={draft.pockets.length === 1 ? 'Conserver au moins une poche' : 'Supprimer cette poche'} aria-label={`Supprimer la poche ${index + 1}`} onClick={() => setRemoveId(pocket.id)} style={{ padding: 6, minHeight: 28 }}><Trash2 size={13} /></Btn>}>
-                    <div style={{ display: 'grid', gap: 12, paddingTop: 10 }}>
-                        <div style={fieldGrid}>
-                            <SimulationNumber label="Capital initial" unit="€" value={pocket.initialCapital} onChange={value => updatePocket(pocket.id, { initialCapital: value })} />
-                            <SimulationNumber label="Versement annuel" unit="€" value={pocket.annualContribution} onChange={value => updatePocket(pocket.id, { annualContribution: value })} />
-                            <SimulationNumber label="Rendement annuel" unit="%" min={-100} value={pocket.annualReturnRate * 100} onChange={value => updatePocket(pocket.id, { annualReturnRate: value / 100 })} />
-                            <SimulationNumber label="Fiscalité à la sortie" unit="%" max={100} value={pocket.taxRate * 100} onChange={value => updatePocket(pocket.id, { taxRate: value / 100 })} />
-                        </div>
-                        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}><label style={{ fontSize: '.68rem', color: T.t2, display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={pocket.crisisSensitive !== false} onChange={event => updatePocket(pocket.id, { crisisSensitive: event.target.checked })} />Sensible aux crises</label><InfoBtn title={`Exposition aux crises · Poche ${index + 1}`} lines={[{ type: 'text', html: 'Cochée, cette poche reçoit la volatilité et les baisses définies dans Simulation crises. Décochée, aucun de ces paramètres ne s’applique : elle conserve son rendement annuel constant. Ses versements, retraits et sa fiscalité restent appliqués. Sans simulation crises, ce choix n’a pas d’effet.' }]} /></div>
-                    </div>
-                </SC>)}
-                <SC title="Horizon & retraits"><div style={{ ...fieldGrid, paddingTop: 10 }}>
-                    <SimulationNumber label="Durée d’épargne" unit="ans" min={1} max={100} integer value={draft.years} onChange={value => { setSelected(null); change({ ...draft, years: value, projection: Number.isFinite(value) ? Math.max(value, draft.projection) : draft.projection }); }} />
-                    <SimulationNumber label="Retrait annuel" unit="%" max={100} value={draft.withdrawal * 100} onChange={value => change({ ...draft, withdrawal: value / 100 })} />
-                    <SimulationNumber label="Fin de projection" unit="ans" min={Number.isFinite(draft.years) ? draft.years : 1} max={150} integer value={draft.projection} onChange={value => { setSelected(null); change({ ...draft, projection: value }); }} />
-                </div></SC>
-                <SC title="Simulation crises"><div style={{ paddingTop: 10 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><label style={{ display: 'flex', gap: 7, alignItems: 'center', fontSize: '.75rem' }}><input type="checkbox" checked={draft.stochastic} onChange={event => change({ ...draft, stochastic: event.target.checked })} />Activer la simulation crises</label><InfoBtn {...SIMULATION_CRISIS_HELP} /></div>
-                    {draft.stochastic && <div style={{ ...fieldGrid, marginTop: 12 }}>
-                        <SimulationNumber label="Volatilité annuelle" unit="%" max={100} value={draft.options.volatility * 100} onChange={value => updateOption('volatility', value / 100)} help="Écart-type du choc annuel commun aux seules poches cochées Sensible aux crises, ajouté à leur rendement estimé. 0 % supprime ces variations." />
-                        <SimulationNumber label="Crise par an" unit="%" max={100} value={draft.options.crisisProbability * 100} onChange={value => updateOption('crisisProbability', value / 100)} help="Probabilité indépendante chaque année. 5 % correspond à une crise tous les 20 ans en moyenne, sans calendrier garanti." />
-                        <SimulationNumber label="Baisse minimale" unit="%" max={draft.options.crisisLossMax * 100} value={draft.options.crisisLossMin * 100} onChange={value => updateOption('crisisLossMin', value / 100)} help="À chaque crise, une baisse est tirée uniformément entre les deux bornes et appliquée après le rendement aux poches exposées." />
-                        <SimulationNumber label="Baisse maximale" unit="%" min={draft.options.crisisLossMin * 100} max={100} value={draft.options.crisisLossMax * 100} onChange={value => updateOption('crisisLossMax', value / 100)} help="Borne supérieure de la perte de crise. Min = max reproduit une perte fixe. +5 % puis −30 % donne −26,5 %." />
-                    </div>}
-                </div></SC>
-            </aside>
+        {isTablet && <Btn ghost onClick={() => setParametersOpen(!parametersOpen)} aria-expanded={parametersOpen} aria-controls="simulation-parameters" style={{ marginBottom: 12, width: '100%', justifyContent: 'space-between' }}><span style={{ display: 'flex', gap: 6, alignItems: 'center', minWidth: 0 }}><SlidersHorizontal size={15} />Paramètres<span style={{ color: T.t2, fontWeight: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>· {draft.pockets.length} poche{draft.pockets.length > 1 ? 's' : ''} · {draft.years} ans · {crisisMode === 'none' ? 'sans crises' : 'avec crises'}</span></span><ChevronDown size={15} style={{ transform: parametersOpen ? 'rotate(180deg)' : 'none', flexShrink: 0 }} /></Btn>}
+        <div style={{ display: 'grid', gridTemplateColumns: isTablet ? 'minmax(0,1fr)' : '340px minmax(0,1fr)', gap: '1rem', alignItems: 'start' }}>
+            {parameters}
             <div style={{ display: 'grid', gap: '1rem', minWidth: 0 }} aria-live="polite">
                 {error && <div role="alert" style={{ color: LOSSC, padding: 12, border: `1px solid ${LOSSC}50`, borderRadius: 8 }}>{error}. Vérifiez les champs de simulation.{isTablet && !parametersOpen && <Btn ghost onClick={() => setParametersOpen(true)} style={{ marginTop: 8 }}>Paramètres</Btn>}</div>}
+                {!error && isEmpty && emptyState}
                 {busy && <SC title="Calcul des scénarios de crises"><div role="status" style={{ paddingTop: 10, display: 'grid', gap: 10 }}><span style={{ fontSize: '.75rem', color: T.t2 }}>{job.key === key && job.completed === draft.options.paths ? 'Scénarios générés · calcul des percentiles et des résultats…' : `${job.key === key ? job.completed.toLocaleString('fr-FR') : 0} / ${draft.options.paths.toLocaleString('fr-FR')} scénarios · ${Math.floor((job.key === key ? job.completed : 0) / draft.options.paths * 100)} %`}</span><progress aria-label={job.key === key && job.completed === draft.options.paths ? 'Calcul des percentiles et des résultats' : 'Progression de la simulation crises'} max={draft.options.paths} value={job.key === key && job.completed === draft.options.paths ? undefined : job.key === key ? job.completed : 0} style={{ width: '100%', accentColor: ACC }} /><Btn ghost onClick={() => { if (workerRef.current) { clearTimeout(workerRef.current.timer); workerRef.current.worker.onmessage = null; workerRef.current.worker.onerror = null; workerRef.current.worker.terminate(); workerRef.current = null; } setJob({ key, completed: 0, error: 'Calcul annulé.' }); }} style={{ justifySelf: 'start' }}><Square size={12} />Annuler</Btn></div></SC>}
                 {!error && jobError && <div role="alert" style={{ color: AMB, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>{jobError}<Btn ghost onClick={() => setAttempt(value => value + 1)}><RotateCcw size={13} />Relancer</Btn></div>}
                 {final && endpoint && <>
-                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0,1fr)' : 'repeat(2,minmax(0,1fr))', gap: 10 }}>
-                        <KpiCard label="Revenu mensuel net à échéance" value={fEUR(horizonMonthlyNet)} sub={`À ${draft.years} ans · ${scenarios ? 'médiane · ' : ''}${money(horizonMonthlyNet! * 12)} nets/an potentiels`} color={GRN} />
-                        <KpiCard label="Patrimoine à échéance" value={fEUR(horizonCapital)} sub={`À ${draft.years} ans · ${scenarios ? 'médiane · ' : ''}avant retrait`} color={ACC} />
+                    <div style={{ padding: '1rem 1.1rem', borderRadius: 12, background: `linear-gradient(135deg,${VALC}14,${GRN}0d)`, border: `1px solid ${VALC}30`, fontSize: '.82rem', lineHeight: 1.7, color: T.t1 }}>
+                        En partant de <strong>{fEUR(initial)}</strong>{contributions > 0 && <> et en versant <strong>{fEUR(contributions)} par an</strong> ({fEUR(contributions / 12)}/mois)</>} pendant <strong>{draft.years} ans</strong>, vous pourriez atteindre <strong style={{ color: VALC }}>{fEUR(horizonCapital)}</strong>{scenarios && ' dans le scénario médian'}.{' '}
+                        {withdrawalYears > 0
+                            ? <>En retirant {fRate(draft.withdrawal)} par an, cela représenterait environ <strong style={{ color: GRN }}>{money(horizonMonthlyNet!)} nets par mois</strong> au départ, et il resterait <strong>{fEUR(projectionCapital)}</strong> après {withdrawalYears} ans de retraits.</>
+                            : <>Un retrait de {fRate(draft.withdrawal)} par an représenterait environ <strong style={{ color: GRN }}>{money(horizonMonthlyNet!)} nets par mois</strong>.</>}
                     </div>
-                    <SC title="Risques · patrimoine" action={<div style={{ display: 'flex', gap: 6, alignItems: 'center' }}><span style={{ fontSize: '.65rem', color: T.t2 }}>{draft.projection} ans</span><InfoBtn {...SIMULATION_REFERENCE_HELP} /></div>}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4, fontSize: '.62rem', color: T.t2, marginTop: 10 }}><span>Épargne · 0–{draft.years} ans</span><span>Retraits · {draft.years}–{draft.projection} ans</span></div>
-                        <div role="region" aria-label="Graphique Risques"><SimulationPlot data={plot} years={draft.years} end={draft.projection}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,minmax(0,1fr))' : 'repeat(4,minmax(0,1fr))', gap: 10 }}>
+                        <KpiCard label="Revenu net / mois" value={fEUR(horizonMonthlyNet)} sub={`Dès ${draft.years} ans${median}`} color={GRN} />
+                        <KpiCard label={`Patrimoine à ${draft.years} ans`} value={fEUR(horizonCapital)} sub={`Avant retraits${median}`} color={VALC} />
+                        <KpiCard label="Total versé" value={fEUR(paidAtHorizon)} sub={`Gains : ${fEUR((horizonCapital ?? 0) - paidAtHorizon)}`} color={T.t1} />
+                        <KpiCard label={`Restant à ${draft.projection} ans`} value={fEUR(projectionCapital)} sub={withdrawalYears > 0 ? `Après ${withdrawalYears} ans de retraits${median}` : 'Aucun retrait simulé'} color={AMB} />
+                    </div>
+                    <SC title="Évolution du patrimoine" action={<InfoBtn {...SIMULATION_REFERENCE_HELP} />}>
+                        <div role="region" aria-label="Graphique de l’évolution du patrimoine"><SimulationPlot data={plot} years={draft.years} end={draft.projection} selected={current?.year} onSelect={selectYear}>
+                            {stacked && draft.pockets.map((pocket, index) => <Area key={pocket.id} isAnimationActive={false} type="linear" stackId="pockets" dataKey={`p${index}`} name={pocket.name} stroke={pocket.color} strokeWidth={1} fill={pocket.color} fillOpacity={.22} />)}
                             {scenarios && <><Area isAnimationActive={false} type="linear" dataKey="band" name="Fourchette P10–P90" stroke="none" fill={VALC} fillOpacity={.16} /><Line isAnimationActive={false} type="linear" dataKey="median" name="Médiane des scénarios" stroke={VALC} dot={false} strokeWidth={2.5} /></>}
-                            <Line isAnimationActive={false} type="linear" dataKey="baseline" name="Rendement constant" stroke={ACC} dot={false} strokeDasharray="5 5" strokeWidth={2} />
+                            <Line isAnimationActive={false} type="linear" dataKey="baseline" name={stacked ? 'Total' : 'Rendement constant'} stroke={T.t1} dot={false} strokeDasharray={stacked ? undefined : '5 5'} strokeWidth={stacked ? 2 : 1.5} />
                         </SimulationPlot></div>
-                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0,1fr)' : 'repeat(3,minmax(0,1fr))', gap: 10, borderTop: `1px solid ${T.brd}`, paddingTop: 12 }}>{[[`À ${draft.years} ans · patrimoine${scenarios ? ' médian' : ''}`, fEUR(horizonCapital)], [`À ${draft.projection} ans · restant${scenarios ? ' médian' : ''}`, fEUR(projectionCapital)], [`À ${draft.projection} ans · net/mois${scenarios ? ' médian' : ''}${draft.projection === draft.years ? ' potentiel' : ''}`, money(projectionMonthlyNet!)]].map(([label, value]) => <div key={label}><div style={{ color: T.t2, fontSize: '.6rem' }}>{label}</div><strong style={{ fontSize: '.85rem', fontVariantNumeric: 'tabular-nums', overflowWrap: 'anywhere' }}>{value}</strong></div>)}</div>
                     </SC>
-                    <SC title="Risques · revenus mensuels nets" action={<InfoBtn {...SIMULATION_REFERENCE_HELP} />}>
-                        <SimulationPlot data={incomePlot} years={draft.years} start={draft.years} end={draft.projection} income>
-                            {scenarios && <><Line isAnimationActive={false} type="linear" dataKey="low" name="P10 net / mois" stroke={LOSSC} dot={draft.years === draft.projection} strokeWidth={2} />
-                                <Line isAnimationActive={false} type="linear" dataKey="median" name="Médiane nette / mois" stroke={VALC} dot={draft.years === draft.projection} strokeWidth={2.5} />
-                                <Line isAnimationActive={false} type="linear" dataKey="high" name="P90 net / mois" stroke={AMB} dot={draft.years === draft.projection} strokeWidth={2} /></>}
-                            <Line isAnimationActive={false} type="linear" dataKey="baseline" name="Rendement constant · net / mois" stroke={GRN} dot={draft.years === draft.projection} strokeDasharray="5 5" strokeWidth={2} />
+                    <SC title="Revenus mensuels nets" action={<InfoBtn {...SIMULATION_REFERENCE_HELP} />}>
+                        <SimulationPlot data={incomePlot} years={draft.years} start={draft.years} end={draft.projection} selected={current?.year} onSelect={selectYear}>
+                            {scenarios && <><Line isAnimationActive={false} type="linear" dataKey="low" name="P10" stroke={LOSSC} dot={draft.years === draft.projection} strokeWidth={2} />
+                                <Line isAnimationActive={false} type="linear" dataKey="median" name="Médiane" stroke={VALC} dot={draft.years === draft.projection} strokeWidth={2.5} />
+                                <Line isAnimationActive={false} type="linear" dataKey="high" name="P90" stroke={AMB} dot={draft.years === draft.projection} strokeWidth={2} /></>}
+                            <Line isAnimationActive={false} type="linear" dataKey="baseline" name="Rendement constant" stroke={GRN} dot={draft.years === draft.projection} strokeDasharray={scenarios ? '5 5' : undefined} strokeWidth={2} />
                         </SimulationPlot>
-                        {scenarios && table([`À ${draft.projection} ans`, 'P10', 'Médiane', 'P90', 'Rendement constant'], <><tr><th style={td}>Patrimoine</th>{[scenarios.at(-1)!.low, scenarios.at(-1)!.median, scenarios.at(-1)!.high, baseline.rows.at(-1)!.capital].map((value, index) => <td key={index} style={tdR}>{fEUR(value)}</td>)}</tr><tr><th style={td}>Net mensuel{draft.years === draft.projection ? ' potentiel' : ''}</th>{[scenarios.income.low, scenarios.income.median, scenarios.income.high, baseline.rows.at(-1)!.net / 12].map((value, index) => <td key={index} style={{ ...tdR, color: GRN }}>{money(value)}</td>)}</tr></>)}
+                        {scenarios && table([`À ${draft.projection} ans`, 'Pessimiste (P10)', 'Médiane', 'Optimiste (P90)', 'Rendement constant'], <><tr><th style={td}>Patrimoine</th>{[scenarios.at(-1)!.low, scenarios.at(-1)!.median, scenarios.at(-1)!.high, baseline.rows.at(-1)!.capital].map((value, index) => <td key={index} style={tdR}>{fEUR(value)}</td>)}</tr><tr><th style={td}>Net mensuel{draft.years === draft.projection ? ' potentiel' : ''}</th>{[scenarios.income.low, scenarios.income.median, scenarios.income.high, baseline.rows.at(-1)!.net / 12].map((value, index) => <td key={index} style={{ ...tdR, color: GRN }}>{money(value)}</td>)}</tr></>)}
                     </SC>
-                    {current && <SC title="Détail par poche" noPad action={<label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: '.65rem', color: T.t2 }}>Année<select aria-label="Année du détail patrimonial" value={current.year} onChange={event => setSelected(Number(event.target.value))} style={{ background: T.inp, color: T.t1, border: `1px solid ${T.brd}`, borderRadius: 6, padding: 4 }}>{rows.map(row => <option key={row.year} value={row.year}>{row.year}</option>)}</select></label>}>
-                        {scenarios && <p style={{ margin: 0, padding: '12px 16px 0', fontSize: '.7rem', color: T.t2, lineHeight: 1.6 }}>À {current.year} ans, ces poches appartiennent au même scénario sélectionné au patrimoine médian de cette année. Leur total correspond au graphique. Son revenu net n’est pas nécessairement le revenu net médian du portefeuille.</p>}
-                        {table(['Poche', 'Patrimoine', 'Base restante', 'Gains / pertes', scenarios ? 'Net du scénario / mois' : 'Net / mois'], <>{current.pockets.map((item, index) => <TRow key={draft.pockets[index].id}><th style={{ ...td, textAlign: 'left' }}>Poche {index + 1}</th><td style={tdR}>{fEUR(item.capital)}</td><td style={tdR}>{fEUR(item.basis)}</td><td style={{ ...tdR, color: gc(item.gains) }}>{fEUR(item.gains)}</td><td style={{ ...tdR, color: GRN, fontWeight: 700 }}>{money(item.net / 12)}</td></TRow>)}<tr><th style={{ ...td, textAlign: 'left' }}>Total{scenarios ? ' · patrimoine médian' : ''}</th><td style={{ ...tdR, fontWeight: 700 }}>{fEUR(current.capital)}</td><td style={tdR}>{fEUR(current.pockets.reduce((sum, item) => sum + item.basis, 0))}</td><td style={tdR}>{fEUR(current.pockets.reduce((sum, item) => sum + item.gains, 0))}</td><td style={{ ...tdR, color: GRN, fontWeight: 700 }}>{money(current.net / 12)}</td></tr></>)}
-                        {scenarios && <div style={{ padding: '12px 16px', fontSize: '.72rem', color: T.t2 }}>Net médian du portefeuille à {current.year} ans{current.year <= draft.years ? ' (potentiel)' : ''} : <strong style={{ color: GRN }}>{money(medianMonthlyNet(current.year)!)} / mois</strong></div>}
+                    {current && <SC title={`Détail par poche · année ${current.year}`} noPad action={<label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: '.65rem', color: T.t2 }}>Année<select aria-label="Année du détail patrimonial" value={current.year} onChange={event => setSelected(Number(event.target.value))} style={{ background: T.inp, color: T.t1, border: `1px solid ${T.brd}`, borderRadius: 6, padding: 4 }}>{rows.map(row => <option key={row.year} value={row.year}>{row.year}</option>)}</select></label>}>
+                        {table(['Poche', 'Patrimoine', 'Base restante', 'Gains / pertes', scenarios ? 'Net du scénario / mois' : 'Net / mois'], <>{current.pockets.map((item, index) => <TRow key={draft.pockets[index].id}><th style={{ ...td, textAlign: 'left' }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Dot c={draft.pockets[index].color} sz={7} />{pocketName(index)}</span></th><td style={tdR}>{fEUR(item.capital)}</td><td style={tdR}>{fEUR(item.basis)}</td><td style={{ ...tdR, color: gc(item.gains) }}>{fEUR(item.gains)}</td><td style={{ ...tdR, color: GRN, fontWeight: 700 }}>{money(item.net / 12)}</td></TRow>)}<tr><th style={{ ...td, textAlign: 'left' }}>Total{median}</th><td style={{ ...tdR, fontWeight: 700 }}>{fEUR(current.capital)}</td><td style={tdR}>{fEUR(current.pockets.reduce((sum, item) => sum + item.basis, 0))}</td><td style={tdR}>{fEUR(current.pockets.reduce((sum, item) => sum + item.gains, 0))}</td><td style={{ ...tdR, color: GRN, fontWeight: 700 }}>{money(current.net / 12)}</td></tr></>)}
+                        {scenarios && <div style={{ padding: '12px 16px', fontSize: '.7rem', color: T.t2 }}>Net médian du portefeuille{current.year <= draft.years ? ' (potentiel)' : ''} : <strong style={{ color: GRN }}>{money(medianMonthlyNet(current.year)!)} / mois</strong> · le détail ci-dessus provient d’un scénario au patrimoine médian.</div>}
                     </SC>}
                 </>}
             </div>
         </div>
-        <div style={{ marginTop: '1rem', minWidth: 0 }}><SC title={scenarios ? 'Projection annuelle · médianes' : 'Projection annuelle'} noPad action={<Btn ghost disabled={busy || !!error || !rows.length} onClick={exportCsv}><Download size={13} />CSV</Btn>}>
-            {scenarios && <p style={{ margin: 0, padding: '12px 16px 0', fontSize: '.7rem', color: T.t2, lineHeight: 1.6 }}>Chaque année utilise un scénario sélectionné au patrimoine médian de cette année, identique au détail par poche. Les lignes ne constituent pas une trajectoire unique. La base, les gains, l’impôt et le net du scénario restent cohérents entre eux ; le net médian est calculé séparément sur tous les scénarios. Les revenus sont potentiels jusqu’à {draft.years} ans, effectifs ensuite. Le CSV reprend cette même sélection annuelle.</p>}
-            {rows.length > 0 && table(['Année', scenarios ? 'Patrimoine médian' : 'Patrimoine', 'Versé cumulé', 'Base restante', 'Gains / pertes', scenarios ? 'Impôt du scénario / an' : 'Impôt / an', scenarios ? 'Net du scénario / mois' : 'Net / mois', ...(scenarios ? ['Net médian / mois'] : [])], rows.map(row => <TRow key={row.year} onClick={() => setSelected(row.year)}><th style={{ ...td, textAlign: 'left' }}><button type="button" onClick={event => { event.stopPropagation(); setSelected(row.year); }} aria-label={`Afficher le détail de l’année ${row.year}`} aria-pressed={row.year === current?.year} style={{ background: row.year === current?.year ? ACC + '15' : 'transparent', color: row.year === current?.year ? ACC : T.t1, border: 'none', borderRadius: 5, padding: '4px 8px', cursor: 'pointer' }}>{row.year}</button></th><td style={tdR}>{fEUR(row.capital)}</td><td style={tdR}>{fEUR(row.pockets.reduce((sum, item) => sum + item.paid, 0))}</td><td style={tdR}>{fEUR(row.pockets.reduce((sum, item) => sum + item.basis, 0))}</td><td style={{ ...tdR, color: gc(row.pockets.reduce((sum, item) => sum + item.gains, 0)) }}>{fEUR(row.pockets.reduce((sum, item) => sum + item.gains, 0))}</td><td style={tdR}>{money(row.tax)}</td><td style={{ ...tdR, color: GRN }}>{money(row.net / 12)}</td>{scenarios && <td style={{ ...tdR, color: GRN, fontWeight: 700 }}>{money(medianMonthlyNet(row.year)!)}</td>}</TRow>))}
-            {!rows.length && <div style={{ padding: '1rem', fontSize: '.72rem', color: T.t2 }}>{busy ? 'Calcul en cours…' : 'Aucun résultat disponible.'}</div>}
-        </SC></div>
-        <div style={{ color: T.t2, fontSize: '.65rem', lineHeight: 1.6, marginTop: 12 }}>Estimation indicative · hors frais et inflation · revenus potentiels jusqu’à {draft.years} ans, retraits effectifs ensuite{draft.stochastic ? ' · patrimoine médian de chaque année dans toutes les vues · net du scénario et net médian distingués · scénario annuel différent possible' : ''}.</div>
-        {removeId && <ConfirmDel msg={`Supprimer la poche ${draft.pockets.findIndex(pocket => pocket.id === removeId) + 1} ?`} onCancel={() => setRemoveId(null)} onOk={() => { if (draft.pockets.length > 1) change({ ...draft, pockets: draft.pockets.filter(pocket => pocket.id !== removeId) }); setRemoveId(null); }} />}
+        {rows.length > 0 && <div style={{ marginTop: '1rem', minWidth: 0 }}><SC title={scenarios ? 'Projection annuelle · médianes' : 'Projection annuelle'} noPad action={<div style={{ display: 'flex', gap: 6, alignItems: 'center' }}><Btn ghost onClick={() => setTableOpen(!tableOpen)} aria-expanded={tableOpen} aria-controls="simulation-annual-table" style={{ padding: '.35rem .6rem', fontSize: '.7rem' }}>{tableOpen ? 'Masquer' : `Afficher (${rows.length} ans)`}<ChevronDown size={13} style={{ transform: tableOpen ? 'rotate(180deg)' : 'none' }} /></Btn><Btn ghost disabled={busy || !!error || !rows.length} onClick={exportCsv} style={{ padding: '.35rem .6rem', fontSize: '.7rem' }}><Download size={13} />CSV</Btn></div>}>
+            {tableOpen && <div id="simulation-annual-table">
+                <div style={{ padding: '12px 16px 0', maxWidth: 260 }}><Segmented label="Pas du tableau" value={tableStep} onChange={setTableStep} options={[{ value: '1', label: 'Chaque année' }, { value: '5', label: 'Tous les 5 ans' }]} /></div>
+                {table(['Année', `Patrimoine${median}`, 'Versé cumulé', 'Base restante', 'Gains / pertes', scenarios ? 'Impôt du scénario / an' : 'Impôt / an', scenarios ? 'Net du scénario / mois' : 'Net / mois', ...(scenarios ? ['Net médian / mois'] : [])], tableRows.map(row => <TRow key={row.year} onClick={() => setSelected(row.year)}><th style={{ ...td, textAlign: 'left' }}><button type="button" onClick={event => { event.stopPropagation(); setSelected(row.year); }} aria-label={`Afficher le détail de l’année ${row.year}`} aria-pressed={row.year === current?.year} style={{ background: row.year === current?.year ? VALC + '18' : 'transparent', color: row.year === current?.year ? VALC : T.t1, border: 'none', borderRadius: 5, padding: '4px 8px', cursor: 'pointer' }}>{row.year}{row.year === draft.years ? ' · fin épargne' : ''}</button></th><td style={tdR}>{fEUR(row.capital)}</td><td style={tdR}>{fEUR(row.pockets.reduce((sum, item) => sum + item.paid, 0))}</td><td style={tdR}>{fEUR(row.pockets.reduce((sum, item) => sum + item.basis, 0))}</td><td style={{ ...tdR, color: gc(row.pockets.reduce((sum, item) => sum + item.gains, 0)) }}>{fEUR(row.pockets.reduce((sum, item) => sum + item.gains, 0))}</td><td style={tdR}>{money(row.tax)}</td><td style={{ ...tdR, color: GRN }}>{money(row.net / 12)}</td>{scenarios && <td style={{ ...tdR, color: GRN, fontWeight: 700 }}>{money(medianMonthlyNet(row.year)!)}</td>}</TRow>))}
+            </div>}
+        </SC></div>}
+        <div style={{ color: T.t2, fontSize: '.65rem', lineHeight: 1.6, marginTop: 12 }}>Estimation indicative, hors frais et inflation · revenus potentiels jusqu’à {draft.years} ans, retraits effectifs ensuite · aucun conseil fiscal ni garantie de résultat.</div>
+        {helpOpen && <InfoModal {...SIMULATION_HELP} onClose={() => setHelpOpen(false)} />}
+        {removeId && <ConfirmDel msg={`Supprimer « ${draft.pockets.find(pocket => pocket.id === removeId)?.name || 'cette poche'} » ?`} onCancel={() => setRemoveId(null)} onOk={() => { if (draft.pockets.length > 1) change({ ...draft, pockets: draft.pockets.filter(pocket => pocket.id !== removeId) }); setRemoveId(null); }} />}
     </div>;
 }
 
@@ -1698,7 +1863,7 @@ export default function App() {
                         : page === 'dashboard'
                             ? <Dashboard pm={pm} gm={gm} ts={ts} vs={vs} ps={ps} setSelP={setSelP} setModal={setModal} dataMode={dataMode} impJSON={impJSON} startEmpty={startEmpty} useDemoAsBase={useDemoAsBase} />
                             : page === 'simulation'
-                                ? <SimulationPage key={simulationRevision} config={simulation} onChange={value => { setSimulation(value); setNeedsExport(true); }} onReset={() => { setSimulation(createSimulationConfig()); setSimulationRevision(revision => revision + 1); setNeedsExport(true); }} />
+                                ? <SimulationPage key={simulationRevision} portfolio={pm} config={simulation} onChange={value => { setSimulation(value); setNeedsExport(true); }} onReset={() => { setSimulation(createSimulationConfig()); setSimulationRevision(revision => revision + 1); setNeedsExport(true); }} />
                                 : <PochesPage pm={pm} vs={vs} ts={ts} gm={gm} setSelP={setSelP} setModal={setModal} />
                     }
                 </main>
