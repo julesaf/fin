@@ -19,11 +19,11 @@ export function validateMonteCarlo(options: MonteCarloOptions) {
 }
 
 export function createSimulationPocket(index = 0, color = '#E8364A'): SimulationPocket {
-    return { id: crypto.randomUUID(), color, name: `Poche ${index + 1}`, initialCapital: 0, annualContribution: 0, annualReturnRate: .05, taxRate: .3, crisisSensitive: true };
+    return { id: crypto.randomUUID(), color, name: `Poche ${index + 1}`, initialCapital: 0, annualContribution: 0, annualReturnRate: .087, taxRate: .3, crisisSensitive: true };
 }
 
 export function createSimulationConfig(): SimulationConfig {
-    return { version: 1, pockets: [createSimulationPocket()], years: 20, withdrawal: .04, projection: 40, stochastic: false, options: { paths: 30000, volatility: .12, crisisProbability: .08, crisisLossMin: .1, crisisLossMax: .5, seed: 42 } };
+    return { version: 1, pockets: [createSimulationPocket()], years: 20, withdrawal: .04, projection: 40, stochastic: false, options: { paths: 100000, volatility: .12, crisisProbability: .05, crisisLossMin: .15, crisisLossMax: .3, seed: 42 } };
 }
 
 export function readSimulationConfig(value: unknown): SimulationConfig {
@@ -38,8 +38,8 @@ export function readSimulationConfig(value: unknown): SimulationConfig {
         ids.add(pocket.id);
         return { id: pocket.id, color: pocket.color, name: pocket.name, initialCapital: pocket.initialCapital, annualContribution: pocket.annualContribution, annualReturnRate: pocket.annualReturnRate, taxRate: pocket.taxRate, crisisSensitive: pocket.crisisSensitive !== false };
     });
-    const { paths, volatility, crisisProbability, crisisLossMin, crisisLossMax, seed } = config.options;
-    return { version: 1, pockets, years: config.years, withdrawal: config.withdrawal, projection: config.projection, stochastic: config.stochastic, options: { paths, volatility, crisisProbability, crisisLossMin, crisisLossMax, seed } };
+    const { volatility, crisisProbability, crisisLossMin, crisisLossMax, seed } = config.options;
+    return { version: 1, pockets, years: config.years, withdrawal: config.withdrawal, projection: config.projection, stochastic: config.stochastic, options: { paths: 100000, volatility, crisisProbability, crisisLossMin, crisisLossMax, seed } };
 }
 
 export function simulate(pockets: Pocket[], years: number, withdrawal: number, projection = years, returns?: (year: number, index: number) => number): Year[] {

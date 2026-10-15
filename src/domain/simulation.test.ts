@@ -119,10 +119,27 @@ describe('Configuration et export', () => {
         expect(first.pockets).toHaveLength(1);
         expect(first.pockets[0].initialCapital).toBe(0);
         expect(first.pockets[0].id).not.toBe(second.pockets[0].id);
-        expect(first.options.paths).toBe(30000);
-        expect(first.options.crisisLossMin).toBe(.1);
-        expect(first.options.crisisLossMax).toBe(.5);
+        expect(first.pockets[0].annualReturnRate).toBe(.087);
+        expect(first.pockets[0].crisisSensitive).toBe(true);
+        expect(createSimulationPocket(1).annualReturnRate).toBe(.087);
+        expect(first.options.paths).toBe(100000);
+        expect(first.options.volatility).toBe(.12);
+        expect(first.options.crisisProbability).toBe(.05);
+        expect(first.options.crisisLossMin).toBe(.15);
+        expect(first.options.crisisLossMax).toBe(.3);
+        expect(first.options.seed).toBe(42);
         expect(readSimulationConfig(first)).toEqual(first);
+    });
+    it('conserve les hypotheses sauvegardees avant le changement des valeurs par defaut', () => {
+        const config = createSimulationConfig();
+        config.pockets[0].annualReturnRate = .05;
+        config.options = { ...config.options, crisisProbability: .08, crisisLossMin: .1, crisisLossMax: .5 };
+        expect(readSimulationConfig(JSON.parse(JSON.stringify(config)))).toEqual(config);
+    });
+    it('fixe les anciennes configurations a 100000 scenarios sans changer les hypotheses', () => {
+        const config = createSimulationConfig();
+        const imported = readSimulationConfig({ ...config, options: { ...config.options, paths: 300 } });
+        expect(imported).toEqual(config);
     });
     it('preserve cinq poches et leurs identifiants/couleurs via JSON', () => {
         const config = createSimulationConfig();
