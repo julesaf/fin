@@ -99,6 +99,36 @@ describe('Monte-Carlo', () => {
         });
         expect(output.incomes.map(row => row.year)).toEqual([2, 3, 4, 5, 6]);
     });
+    it('aligne chaque detail annuel sur la mediane patrimoniale de la meme annee', () => {
+        const pockets = [
+            { ...pocket, initialCapital: 50000, annualContribution: 12000, crisisSensitive: true },
+            { ...pocket, initialCapital: 10000, annualContribution: 2000, annualReturnRate: .02, taxRate: .1, crisisSensitive: false },
+        ];
+        const output = monteCarlo(pockets, 10, .04, 40, { ...options, paths: 1000 });
+        expect(output.medianCapitalRows).toHaveLength(40);
+        const safe = simulate([pockets[1]], 10, .04, 40);
+        output.medianCapitalRows.forEach((row, index) => {
+            expect(row.year).toBe(index + 1);
+            expect(row.capital).toBeCloseTo(output[index].median);
+            expect(row.capital).toBeCloseTo(row.pockets.reduce((sum, item) => sum + item.capital, 0));
+            expect(row.net).toBeCloseTo(row.pockets.reduce((sum, item) => sum + item.net, 0));
+            expect(row.net).toBeCloseTo(row.gross - row.tax);
+            expect(row.pockets[1]).toEqual(safe[index].pockets[0]);
+            row.pockets.forEach(item => expect(item.gains).toBeCloseTo(item.capital - item.basis));
+        });
+        expect(output.medianCapitalRows[9].capital).not.toBeCloseTo(output.representative[9].capital);
+        expect(output.medianCapitalRows.at(-1)).toEqual(output.representative.at(-1));
+        expect(output.annualIncomes.map(row => row.year)).toEqual(Array.from({ length: 40 }, (_, index) => index + 1));
+        expect(output.annualIncomes.slice(9)).toEqual(output.incomes);
+    });
+    it('conserve les details annuels deterministes et gere une echeance egale a la projection', () => {
+        const pockets = [{ ...pocket, crisisSensitive: false }];
+        const output = monteCarlo(pockets, 3, .04, 3, options);
+        expect(output.medianCapitalRows).toEqual(simulate(pockets, 3, .04, 3));
+        expect(output.medianCapitalRows[2].capital).toBeCloseTo(output[2].median);
+        expect(output.incomes[0].year).toBe(3);
+        output.annualIncomes.forEach((row, index) => expect(row.median).toBeCloseTo(output.medianCapitalRows[index].net / 12));
+    });
     it('respecte les bornes de crises et epargne les poches non exposees', () => {
         const settings = { ...options, volatility: 0, crisisProbability: 1, crisisLossMin: .2, crisisLossMax: .5 };
         const exposed = { ...pocket, annualContribution: 0 };
@@ -146,6 +176,21 @@ describe('Monte-Carlo', () => {
 });
 
 describe('Configuration et export', () => {
+    it('exporte le detail median annuel et distingue le net des poches du net median du portefeuille', () => {
+        const pockets = [{ ...pocket }, { ...pocket, initialCapital: 2000, taxRate: .1 }];
+        const output = monteCarlo(pockets, 2, .04, 4, options);
+        const csv = simulationCsv(pockets, output.medianCapitalRows, output.annualIncomes);
+        const lines = csv.split('\r\n');
+        expect(lines).toHaveLength(9);
+        expect(lines[0]).toContain('"Mensuel net poche EUR"');
+        expect(lines[0]).toContain('"Mensuel net median portefeuille EUR"');
+        output.medianCapitalRows.forEach((row, index) => {
+            const cells = lines[index * 2 + 1].split(';');
+            expect(cells).toHaveLength(14);
+            expect(cells[6]).toBe(`"${row.pockets[0].capital.toLocaleString('fr-FR', { useGrouping: false, maximumFractionDigits: 2 })}"`);
+            expect(cells[13]).toBe(`"${output.annualIncomes[index].median.toLocaleString('fr-FR', { useGrouping: false, maximumFractionDigits: 2 })}"`);
+        });
+    });
     it('cree une simulation manuelle distincte et une seule poche', () => {
         const first = createSimulationConfig(), second = createSimulationConfig();
         expect(first.pockets).toHaveLength(1);

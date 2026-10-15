@@ -82,7 +82,7 @@ export function monteCarlo(pockets: Pocket[], years: number, withdrawal: number,
     const seeds = new Uint32Array(options.paths);
     const capitals = new Float64Array(pockets.length);
     const bases = new Float64Array(pockets.length);
-    const incomeSamples = Array.from({ length: projection - years + 1 }, () => new Float64Array(options.paths));
+    const incomeSamples = Array.from({ length: projection }, () => new Float64Array(options.paths));
     const progressInterval = Math.max(1, Math.min(2000, Math.floor(options.paths / 100)));
     progress?.(0);
     for (let path = 0; path < options.paths; path++) {
@@ -106,7 +106,7 @@ export function monteCarlo(pockets: Pocket[], years: number, withdrawal: number,
             });
             if (!Number.isFinite(total) || !Number.isFinite(net)) throw new Error('Montants trop eleves pour le calcul');
             samples[year - 1][path] = total;
-            if (year >= years) incomeSamples[year - years][path] = net / 12;
+            incomeSamples[year - 1][path] = net / 12;
         }
         if ((path + 1) % progressInterval === 0 && path + 1 < options.paths) progress?.(path + 1);
     }
@@ -114,37 +114,44 @@ export function monteCarlo(pockets: Pocket[], years: number, withdrawal: number,
     const finalValues = samples[projection - 1];
     const sortedFinal = finalValues.slice().sort();
     const median = sortedFinal[Math.floor((options.paths - 1) * .5)];
-    state = seeds[finalValues.indexOf(median)];
-    const shocks = Array.from({ length: projection }, () => {
-        const normal = Math.sqrt(-2 * Math.log(random())) * Math.cos(2 * Math.PI * random());
-        const crisis = random() < options.crisisProbability;
-        const loss = crisis ? options.crisisLossMin + random() * (options.crisisLossMax - options.crisisLossMin) : 0;
-        return { normal, crisis, loss };
-    });
-    const representative = simulate(pockets, years, withdrawal, projection, (year, index) => {
-        if (pockets[index].crisisSensitive === false) return pockets[index].annualReturnRate;
-        const shock = shocks[year - 1];
-        const factor = Math.max(0, 1 + pockets[index].annualReturnRate + options.volatility * shock.normal);
-        return factor * (shock.crisis ? 1 - shock.loss : 1) - 1;
-    });
+    const reconstruct = (seed: number) => {
+        state = seed;
+        const shocks = Array.from({ length: projection }, () => {
+            const normal = Math.sqrt(-2 * Math.log(random())) * Math.cos(2 * Math.PI * random());
+            const crisis = random() < options.crisisProbability;
+            const loss = crisis ? options.crisisLossMin + random() * (options.crisisLossMax - options.crisisLossMin) : 0;
+            return { normal, crisis, loss };
+        });
+        return simulate(pockets, years, withdrawal, projection, (year, index) => {
+            if (pockets[index].crisisSensitive === false) return pockets[index].annualReturnRate;
+            const shock = shocks[year - 1];
+            const factor = Math.max(0, 1 + pockets[index].annualReturnRate + options.volatility * shock.normal);
+            return factor * (shock.crisis ? 1 - shock.loss : 1) - 1;
+        });
+    };
+    const representative = reconstruct(seeds[finalValues.indexOf(median)]);
+    const medianCapitalRows: Year[] = [];
     const percentiles = samples.map((values, index) => {
-        values.sort();
-        const quantile = (fraction: number) => values[Math.floor((values.length - 1) * fraction)];
+        const sorted = values.slice().sort();
+        const quantile = (fraction: number) => sorted[Math.floor((sorted.length - 1) * fraction)];
+        medianCapitalRows.push(reconstruct(seeds[values.indexOf(quantile(.5))])[index]);
         return { year: index + 1, low: quantile(.1), median: quantile(.5), high: quantile(.9) };
     });
-    const incomes = incomeSamples.map((values, index) => {
+    const annualIncomes = incomeSamples.map((values, index) => {
         values.sort();
         const quantile = (fraction: number) => values[Math.floor((options.paths - 1) * fraction)];
-        return { year: years + index, low: quantile(.1), median: quantile(.5), high: quantile(.9) };
+        return { year: index + 1, low: quantile(.1), median: quantile(.5), high: quantile(.9) };
     });
-    return Object.assign(percentiles, { representative, incomes, income: incomes[incomes.length - 1] });
+    const incomes = annualIncomes.slice(years - 1);
+    return Object.assign(percentiles, { representative, medianCapitalRows, annualIncomes, incomes, income: incomes[incomes.length - 1] });
 }
 
 export type MonteCarloResult = ReturnType<typeof monteCarlo>;
 
-export function simulationCsv(pockets: Pocket[], rows: Year[]): string {
-    const header = ['Annee', 'Poche', 'Capital debut EUR', 'Apres rendement EUR', 'Verse cumule EUR', 'Depot EUR', 'Patrimoine fin annee EUR', 'Capital place restant EUR', 'Gains ou pertes EUR', 'Gains imposables EUR', 'Impot EUR', 'Retrait net EUR', 'Mensuel net EUR'];
+export function simulationCsv(pockets: Pocket[], rows: Year[], medianIncomes?: { year: number; median: number }[]): string {
+    const header = ['Annee', 'Poche', 'Capital debut EUR', 'Apres rendement EUR', 'Verse cumule EUR', 'Depot EUR', 'Patrimoine fin annee EUR', 'Capital place restant EUR', 'Gains ou pertes EUR', 'Gains imposables EUR', 'Impot EUR', 'Retrait net poche EUR', 'Mensuel net poche EUR', ...(medianIncomes ? ['Mensuel net median portefeuille EUR'] : [])];
+    const medianNetByYear = new Map(medianIncomes?.map(row => [row.year, row.median]));
     const quote = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
-    const data = rows.flatMap(row => row.pockets.map((item, index) => [row.year, pockets[index].name, item.capitalStart, item.capitalAfterReturn, item.paid, item.contribution, item.capital, item.basis, item.gains, item.taxable, item.tax, item.net, item.net / 12].map(value => quote(typeof value === 'number' ? value.toLocaleString('fr-FR', { useGrouping: false, maximumFractionDigits: 2 }) : value)).join(';')));
+    const data = rows.flatMap(row => row.pockets.map((item, index) => [row.year, pockets[index].name, item.capitalStart, item.capitalAfterReturn, item.paid, item.contribution, item.capital, item.basis, item.gains, item.taxable, item.tax, item.net, item.net / 12, ...(medianIncomes ? [medianNetByYear.get(row.year) ?? ''] : [])].map(value => quote(typeof value === 'number' ? value.toLocaleString('fr-FR', { useGrouping: false, maximumFractionDigits: 2 }) : value)).join(';')));
     return '\uFEFF' + header.map(quote).join(';') + '\r\n' + data.join('\r\n');
 }
