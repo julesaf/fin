@@ -111,6 +111,38 @@ describe('Monte-Carlo', () => {
         mixed.representative.forEach((row, index) => expect(row.pockets[1].capital).toBeCloseTo(safe[index].capital));
         for (const changes of [{ paths: 0 }, { paths: 10.5 }, { seed: -1 }, { seed: 4294967296 }, { crisisLossMin: .6 }]) expect(() => monteCarlo([pocket], 1, 0, 1, { ...settings, ...changes })).toThrow();
     });
+    it('applique la volatilite et les crises seulement aux poches cochees', () => {
+        const safePocket = { ...pocket, crisisSensitive: false };
+        const baseline = simulate([safePocket], 2, .04, 6);
+        const settings = { ...options, volatility: .3, crisisProbability: 1, crisisLossMin: .2, crisisLossMax: .5 };
+        const output = monteCarlo([{ ...pocket, crisisSensitive: true }, safePocket], 2, .04, 6, settings);
+        output.representative.forEach((row, index) => {
+            expect(row.pockets[1]).toEqual(baseline[index].pockets[0]);
+            expect(row.capital).toBeCloseTo(row.pockets.reduce((sum, item) => sum + item.capital, 0));
+            expect(row.net).toBeCloseTo(row.pockets.reduce((sum, item) => sum + item.net, 0));
+        });
+        expect(output.representative.some((row, index) => row.pockets[0].capital !== baseline[index].capital)).toBe(true);
+        expect(output.at(-1)!.median).toBeCloseTo(output.representative.at(-1)!.capital);
+    });
+    it('ignore tous les parametres aleatoires lorsque toutes les poches sont decochees', () => {
+        const pockets = [{ ...pocket, crisisSensitive: false }, { ...pocket, initialCapital: 2000, taxRate: .1, crisisSensitive: false }];
+        const baseline = simulate(pockets, 2, .04, 6);
+        for (const settings of [options, { ...options, volatility: .9, crisisProbability: 1, crisisLossMin: 1, crisisLossMax: 1, seed: 1234 }]) {
+            const output = monteCarlo(pockets, 2, .04, 6, settings);
+            expect(output.representative).toEqual(baseline);
+            output.forEach((row, index) => {
+                expect(row.low).toBeCloseTo(baseline[index].capital);
+                expect(row.median).toBeCloseTo(baseline[index].capital);
+                expect(row.high).toBeCloseTo(baseline[index].capital);
+            });
+            output.incomes.forEach((row, index) => {
+                const net = baseline[index + 1].net / 12;
+                expect(row.low).toBeCloseTo(net);
+                expect(row.median).toBeCloseTo(net);
+                expect(row.high).toBeCloseTo(net);
+            });
+        }
+    });
 });
 
 describe('Configuration et export', () => {

@@ -95,7 +95,7 @@ export function monteCarlo(pockets: Pocket[], years: number, withdrawal: number,
             let total = 0;
             let net = 0;
             pockets.forEach((pocket, index) => {
-                const factor = Math.max(0, 1 + pocket.annualReturnRate + options.volatility * normal);
+                const factor = Math.max(0, 1 + pocket.annualReturnRate + (pocket.crisisSensitive !== false ? options.volatility * normal : 0));
                 capitals[index] *= factor * (crisis && pocket.crisisSensitive !== false ? 1 - loss : 1);
                 if (year <= years) { capitals[index] += pocket.annualContribution; bases[index] += pocket.annualContribution; }
                 const gross = capitals[index] * withdrawal;
@@ -122,9 +122,10 @@ export function monteCarlo(pockets: Pocket[], years: number, withdrawal: number,
         return { normal, crisis, loss };
     });
     const representative = simulate(pockets, years, withdrawal, projection, (year, index) => {
+        if (pockets[index].crisisSensitive === false) return pockets[index].annualReturnRate;
         const shock = shocks[year - 1];
         const factor = Math.max(0, 1 + pockets[index].annualReturnRate + options.volatility * shock.normal);
-        return factor * (shock.crisis && pockets[index].crisisSensitive !== false ? 1 - shock.loss : 1) - 1;
+        return factor * (shock.crisis ? 1 - shock.loss : 1) - 1;
     });
     const percentiles = samples.map((values, index) => {
         values.sort();
