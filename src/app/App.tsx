@@ -52,8 +52,8 @@ function InfoModal({ onClose, title, lines }) {
     const tx3 = T.dark ? '#5050808' : '#9898C0';
     const br = T.dark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
     return (
-        <div onClick={e => { if (e.target === e.currentTarget) onClose(); }} style={{ ...B, position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
-            <div style={{ ...B, background: T.dark ? '#1C1C27' : '#fff', border: `1px solid ${br}`, borderRadius: 16, width: 310, maxWidth: 'calc(100vw - 3rem)', maxHeight: 'calc(100vh - 3rem)', overflowY: 'auto', boxShadow: T.dark ? '0 20px 60px rgba(0,0,0,0.7)' : '0 20px 60px rgba(0,0,0,0.15)', boxSizing: 'border-box' }}>
+        <div onClick={e => { if (e.target === e.currentTarget) onClose(); }} style={{ ...B, position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
+            <div role="dialog" aria-modal="true" aria-label={title} style={{ ...B, background: T.dark ? '#1C1C27' : '#fff', border: `1px solid ${br}`, borderRadius: 16, width: 640, maxWidth: '100%', maxHeight: 'calc(100dvh - 24px)', overflowY: 'auto', boxShadow: T.dark ? '0 20px 60px rgba(0,0,0,0.7)' : '0 20px 60px rgba(0,0,0,0.15)', boxSizing: 'border-box' }}>
 
                 {/* Top accent */}
                 <div style={{ height: 2, background: `linear-gradient(90deg,${ACC},transparent)`, borderRadius: '16px 16px 0 0' }} />
@@ -89,8 +89,8 @@ function InfoModal({ onClose, title, lines }) {
                                 {line.rows.map((r, j) => {
                                     const isLast = j === line.rows.length - 1;
                                     return (
-                                        <div key={j} style={{ ...B, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: isLast ? '.55rem .8rem' : '.42rem .8rem', background: isLast ? (T.dark ? `${r.color || GRN}14` : `${r.color || GRN}09`) : (T.dark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)'), borderTop: j > 0 ? `1px solid ${br}` : 'none' }}>
-                                            <span style={{ ...B, fontSize: '.74rem', color: isLast ? (r.color || GRN) : tx2, fontWeight: isLast ? 600 : 400, flexShrink: 0 }}>{r.label}</span>
+                                        <div key={j} style={{ ...B, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, padding: isLast ? '.55rem .8rem' : '.42rem .8rem', background: isLast ? (T.dark ? `${r.color || GRN}14` : `${r.color || GRN}09`) : (T.dark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)'), borderTop: j > 0 ? `1px solid ${br}` : 'none' }}>
+                                            <span style={{ ...B, fontSize: '.74rem', color: isLast ? (r.color || GRN) : tx2, fontWeight: isLast ? 600 : 400, flex: '1 1 140px', minWidth: 0 }}>{r.label}</span>
                                             <span style={{ ...B, fontSize: isLast ? '.8rem' : '.74rem', fontWeight: 700, color: r.color || (isLast ? GRN : tx1), fontVariantNumeric: 'tabular-nums', textAlign: 'right' }}>{r.value}</span>
                                         </div>
                                     );
@@ -1388,15 +1388,28 @@ function SimulationNumber({ label, value, onChange, min = 0, max, integer = fals
 
 function SimulationPlot({ data, years, end, start = 0, income = false, children }) {
     const T = useT();
+    const { isMobile } = useBreakpoint();
     const ticks = [...new Set([start, Math.round((start + years) / 2), years, Math.round((years + end) / 2), end])].filter(value => value >= start && value <= end);
-    return <div style={{ height: 300, minWidth: 0, marginTop: 12 }}>
+    const values: number[] = data.flatMap(row => [row.baseline, row.median, row.low, row.high, ...(row.band || [])]).filter(value => typeof value === 'number' && Number.isFinite(value));
+    const minValue = Math.min(0, ...values);
+    const maxValue = Math.max(0, ...values);
+    const range = maxValue - minValue || 1;
+    const roughStep = range * 1.05 / 4;
+    const magnitude = 10 ** Math.floor(Math.log10(roughStep));
+    const step = [1, 2, 2.5, 5, 10].find(value => value * magnitude >= roughStep)! * magnitude;
+    const axisMin = Math.floor(minValue / step) * step;
+    const axisMax = Math.ceil((maxValue + range * .05) / step) * step;
+    const axisTicks = Array.from({ length: Math.round((axisMax - axisMin) / step) + 1 }, (_, index) => Number((axisMin + index * step).toPrecision(12)));
+    const axisFormat = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', notation: 'compact', maximumSignificantDigits: 3 });
+    const axisWidth = Math.max(48, ...axisTicks.map(value => axisFormat.format(value).length * 6 + 14));
+    return <div style={{ height: isMobile ? 340 : 300, minWidth: 0, marginTop: 12 }}>
         <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={data} margin={{ top: 10, right: 8, left: 0, bottom: 5 }}>
                 <CartesianGrid stroke={T.brd} vertical={false} />
                 <XAxis dataKey="year" type="number" domain={start === end ? [start - 1, end + 1] : [start, end]} ticks={ticks} tick={{ fill: T.t2, fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={20} />
-                <YAxis width={62} tick={{ fill: T.t2, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={value => income ? fEUR(value) : `${Math.round(value / 1000)} k€`} />
+                <YAxis width={axisWidth} domain={[axisMin, axisMax]} ticks={axisTicks} tick={{ fill: T.t2, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={value => axisFormat.format(value)} />
                 <RT contentStyle={{ background: T.s1, border: `1px solid ${T.brd}`, borderRadius: 8, color: T.t1, fontSize: 12 }} labelFormatter={value => `Année ${value} · ${Number(value) <= years ? 'Épargne' : 'Retraits'}`} formatter={(value, name) => [Array.isArray(value) ? `${fEUR(value[0])} à ${fEUR(value[1])}` : fEUR(value), name]} />
-                <Legend iconType="plainline" wrapperStyle={{ fontSize: 11, paddingTop: 8, color: T.t2 }} />
+                <Legend iconType="plainline" verticalAlign="bottom" height={isMobile ? 78 : 36} wrapperStyle={{ fontSize: 11, paddingTop: 12, lineHeight: '20px', color: T.t2 }} />
                 <ReferenceLine x={years} stroke={T.t2} strokeDasharray="4 4" />
                 {children}
             </ComposedChart>
