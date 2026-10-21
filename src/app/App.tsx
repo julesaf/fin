@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useId, createContext, useContext } from "react";
 import { ComposedChart, Area, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip as RT, ResponsiveContainer, Legend, ReferenceArea, ReferenceLine } from "recharts";
-import { Plus, Download, Upload, X, Trash2, ArrowLeft, TrendingUp, TrendingDown, Sun, Moon, ArrowUpRight, ArrowDownRight, LayoutDashboard, Layers, Pencil, Check, LogOut, ShieldCheck, CloudOff, PieChart as PieChartIcon, ChartNoAxesCombined, RotateCcw, SlidersHorizontal, ChevronDown, Square } from "lucide-react";
+import { Plus, Download, Upload, X, Trash2, ArrowLeft, TrendingUp, TrendingDown, Sun, Moon, ArrowUpRight, ArrowDownRight, LayoutDashboard, Layers, Pencil, Check, LogOut, ShieldCheck, CloudOff, PieChart as PieChartIcon, ChartNoAxesCombined, RotateCcw, SlidersHorizontal, ChevronDown, Square, Archive } from "lucide-react";
 import {
     ACCENT_COLOR as ACC,
     VALUE_COLOR as VALC,
@@ -29,6 +29,15 @@ import {
     getAnnualPerformanceRows,
     getPocketMetrics,
     getPortfolioMetrics,
+    assertHistoryEditable,
+    assertPocketWritable,
+    readPortfolioData,
+    validatePortfolio,
+    validatePocketClosures,
+    localToday,
+    getPocketValueAtDate,
+    prepareContribution,
+    prepareWithdrawal,
 } from "../domain/portfolioAnalytics";
 import { createDarkTheme, createLightTheme } from "../theme/theme";
 import { simulate, createSimulationConfig, createSimulationPocket, readSimulationConfig, simulationCsv, type SimulationConfig, type SimulationPocket, type MonteCarloResult } from '../domain/simulation';
@@ -118,6 +127,7 @@ const XIRR_INFO = {
     title: "XIRR — Rendement annualisé",
     lines: [
         { type: 'text', html: "Le XIRR est votre rendement annuel <strong>réel</strong>, calculé en tenant compte de la date exacte de chaque mouvement d'argent." },
+        { type: 'text', html: "Il est indisponible si les flux nets ne couvrent pas au moins deux dates distinctes. Aucun taux arbitraire n'est utilisé dans ce cas." },
         { type: 'heading', text: "Pourquoi ça diffère du gain simple ?" },
         { type: 'text', html: "Le gain brut ne dit pas <em>combien de temps</em> votre argent a travaillé. 15 % en 18 mois, ce n'est pas la même chose que 15 % en 12 mois. Le XIRR ramène tout à une base annuelle comparable." },
         { type: 'heading', text: "Exemple chiffré" },
@@ -137,6 +147,7 @@ const DIETZ_INFO = {
     title: "Modified Dietz — Rendement de période",
     lines: [
         { type: 'text', html: "Mesure combien votre portefeuille a réellement progressé sur la période, <strong>sans être faussé</strong> par vos apports ou retraits." },
+        { type: 'text', html: "Pour une poche, la période commence à la valeur de fin de la première journée : les mouvements de cette journée sont déjà inclus dans cette valeur." },
         { type: 'heading', text: "Le problème qu'il résout" },
         { type: 'text', html: "Si vous déposez 5 000 € le 1er janvier et 5 000 € supplémentaires le 31 décembre, votre valeur finale de 10 500 € n'est pas un gain de +5 % — le second apport n'a quasiment pas eu le temps de travailler." },
         { type: 'heading', text: "Exemple" },
@@ -156,6 +167,7 @@ const PERF_ANN_INFO = {
     title: "Performance annuelle",
     lines: [
         { type: 'text', html: "Combien la poche a gagné ou perdu sur l'année, <strong>une fois les apports et retraits retirés du calcul</strong>." },
+        { type: 'text', html: "Tous les mouvements de l'année sont inclus. Après la dernière observation, la valeur est ajustée des flux ultérieurs, sans supposer de gain de marché ; elle est alors signalée comme estimée." },
         { type: 'heading', text: "Pourquoi exclure les apports ?" },
         { type: 'text', html: "Si vous versez 10 000 € en janvier et 10 000 € en décembre, votre portefeuille a progressé de 20 000 € — mais ce n'est pas de la performance, c'est de l'épargne. On ne retient que ce que le marché a produit." },
         { type: 'heading', text: "Exemple" },
@@ -198,7 +210,7 @@ function ChartGuide({ color, mode = 'value' }) {
     const item = (label, c, dashed) => <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: T.t2, fontSize: '.62rem' }}><span style={{ width: 18, borderTop: `2px ${dashed ? 'dashed' : 'solid'} ${c}`, display: 'inline-block' }} />{label}</span>;
     const capColor = T.dark ? '#F8FAFC' : '#111827';
     if (mode !== 'value') return <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, margin: '0 0 .35rem', alignItems: 'center', color: T.t2, fontSize: '.62rem' }}>Courbe = Performance</div>;
-    return <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, margin: '0 0 .35rem', alignItems: 'center' }}>{item('Valeur réelle', color, false)}{item('Capital investi', capColor, true)}<span style={{ color: T.t3, fontSize: '.61rem' }}>Perf. = valeur - capital + revenus nets</span></div>;
+    return <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, margin: '0 0 .35rem', alignItems: 'center' }}>{item('Valeur suivie', color, false)}{item('Capital investi', capColor, true)}<span style={{ color: T.t3, fontSize: '.61rem' }}>Perf. = valeur - capital + revenus nets</span></div>;
 }
 
 function yearBands(data, labelKey) {
@@ -421,7 +433,7 @@ function AnnualTable({ pid, txs, vals }) {
                         <TRow key={r.y}>
                             <td style={{ ...td, fontWeight: 700, color: T.t1 }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{r.y}{r.y === CY && <Badge ch="en cours" />}</span></td>
                             {!isMobile && <td style={{ ...tdR, color: T.t2 }}>{r.bmv > 0 ? fEUR(r.bmv) : '–'}</td>}
-                            <td style={{ ...tdR, fontWeight: 600, color: ACC }}>{r.emv > 0 ? fEUR(r.emv) : '–'}</td>
+                            <td style={{ ...tdR, fontWeight: 600, color: ACC }}>{fEUR(r.emv)}{r.valueEstimated && <div style={{ fontSize: '.6rem', color: T.t3 }}>Estimée</div>}</td>
                             <td style={{ ...tdR, color: r.netCF >= 0 ? T.t1 : AMB }}>{fEUR(r.netCF)}</td>
                             <td style={{ ...tdR, fontWeight: 600, color: gc(r.perfE) }}>{fEURS(r.perfE)}</td>
                             <td style={{ ...tdR, fontWeight: 700, color: gc(r.perfPct) }}>{fPctS(r.perfPct)}</td>
@@ -495,40 +507,70 @@ function Sheet({ title, onClose, children }) {
 }
 
 // ── Modals ──
-function ModalSaisie({ poches, defPoche, onSave, onClose }) {
+function ModalSaisie({ poches, txs, vals, defPoche, onSave, onClose }) {
     const T = useT();
-    const [pocheId, setPocheId] = useState(defPoche || poches[0]?.id || '');
+    const [pocheId, setPocheId] = useState(poches.some(p => p.id === defPoche) ? defPoche : poches[0]?.id || '');
     const [type, setType] = useState('apport');
     const [montant, setMontant] = useState('');
     const [valeur, setValeur] = useState('');
+    const [beforeValue, setBeforeValue] = useState('');
+    const [revalue, setRevalue] = useState(false);
     const [note, setNote] = useState('');
-    const [date, setDate] = useState(TODAY);
-    const hasTx = montant !== '' && parseFloat(montant) > 0, hasVal = valeur !== '' && parseFloat(valeur) >= 0;
-    const ok = pocheId && (hasTx || hasVal);
-    const status = !hasTx && !hasVal ? 'Remplissez au moins un champ' : hasTx && hasVal ? 'Transaction + valorisation' : hasTx ? 'Transaction uniquement' : 'Valorisation uniquement';
-    const save = () => { if (!ok) return; onSave(pocheId, hasTx ? { type, montant: parseFloat(montant), commentaire: note.trim() } : null, hasVal ? parseFloat(valeur) : null, date, note.trim()); };
+    const [date, setDate] = useState(localToday);
+    const hasTx = montant !== '' && Number.isFinite(Number(montant)) && Number(montant) > 0;
+    const hasVal = valeur !== '' && Number.isFinite(Number(valeur)) && Number(valeur) >= 0;
+    const withdrawalMode = type === 'retrait';
+    const known = vals.filter(v => v.pocheId === pocheId && v.date <= date).sort((a, b) => a.date.localeCompare(b.date)).at(-1);
+    const hasKnownValue = !!known || txs.some(transaction => transaction.pocheId === pocheId && transaction.timestamp <= date);
+    const knownValue = getPocketValueAtDate(pocheId, txs, vals, date);
+    let movement = null, entryError = '';
+    try {
+        assertHistoryEditable(pocheId, date, vals);
+        if (montant !== '') movement = withdrawalMode
+            ? prepareWithdrawal(pocheId, Number(montant), date, vals, beforeValue === '' ? undefined : Number(beforeValue), txs)
+            : prepareContribution(pocheId, Number(montant), date, vals, txs, valeur === '' ? undefined : Number(valeur));
+    }
+    catch (err) { entryError = err.message; }
+    const ok = !!date && !entryError && (valeur === '' || hasVal) && poches.some(p => p.id === pocheId) && (withdrawalMode ? hasTx && !!movement : hasTx && !!movement || montant === '' && hasVal);
+    const status = withdrawalMode ? movement ? 'Retrait + valeur restante' : 'Retrait à renseigner' : hasTx ? 'Apport + valeur actualisée' : hasVal ? 'Valorisation uniquement' : 'Remplissez au moins un champ';
+    const resetBefore = () => { setBeforeValue(''); setRevalue(false); };
+    const save = () => { if (!ok) return; onSave(pocheId, hasTx ? { type, montant: Number(montant), commentaire: note.trim() } : null, movement ? movement.valueAfter : hasVal ? Number(valeur) : null, date, note.trim(), withdrawalMode && beforeValue !== '' ? Number(beforeValue) : undefined); };
     return (
         <Sheet title="Nouvelle saisie" onClose={onClose}>
+            {!poches.length && <p role="status" style={{ color: T.t2 }}>Aucune poche active.</p>}
             <div style={{ display: 'grid', gap: '.85rem' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                    <div><Lbl ch="Poche" /><Sel value={pocheId} onChange={e => setPocheId(e.target.value)}>{poches.map(p => <option key={p.id} value={p.id}>{p.nom}</option>)}</Sel></div>
-                    <div><Lbl ch="Date" /><Inp type="date" value={date} onChange={e => setDate(e.target.value)} /></div>
+                    <div><Lbl ch="Poche" /><Sel value={pocheId} onChange={e => { setPocheId(e.target.value); resetBefore(); }}>{poches.map(p => <option key={p.id} value={p.id}>{p.nom}</option>)}</Sel></div>
+                    <div><Lbl ch="Date" /><Inp type="date" value={date} onChange={e => { setDate(e.target.value); resetBefore(); }} /></div>
                 </div>
                 <div style={{ background: T.s2, borderRadius: 10, padding: '.85rem', border: `1px solid ${T.brd}` }}>
-                    <div style={{ fontSize: '.58rem', color: T.t2, textTransform: 'uppercase', letterSpacing: '.1em', fontWeight: 600, marginBottom: '.65rem' }}>Transaction <span style={{ fontWeight: 400, color: T.t3 }}>— optionnel</span></div>
+                    <div style={{ fontSize: '.58rem', color: T.t2, textTransform: 'uppercase', letterSpacing: '.1em', fontWeight: 600, marginBottom: '.65rem' }}>Transaction <span style={{ fontWeight: 400, color: T.t3 }}>{withdrawalMode ? '— obligatoire' : '— optionnel'}</span></div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                        <div><Lbl ch="Type" /><Sel value={type} onChange={e => setType(e.target.value)}>{TX_IN.map(t => <option key={t.v} value={t.v}>{t.l}</option>)}</Sel></div>
-                        <div><Lbl ch="Montant (€)" /><Inp type="number" min="0" step="0.01" value={montant} onChange={e => setMontant(e.target.value)} placeholder="0" /></div>
+                        <div><Lbl ch="Type" /><Sel value={type} onChange={e => { setType(e.target.value); resetBefore(); }}>{TX_IN.map(t => <option key={t.v} value={t.v}>{t.l}</option>)}</Sel></div>
+                        <div><Lbl ch="Montant (€)" /><Inp aria-label="Montant de la transaction" type="number" min="0" step="0.01" value={montant} onChange={e => setMontant(e.target.value)} placeholder="0" /></div>
                     </div>
                 </div>
                 <div style={{ background: T.s2, borderRadius: 10, padding: '.85rem', border: `1px solid ${T.brd}` }}>
-                    <div style={{ fontSize: '.58rem', color: T.t2, textTransform: 'uppercase', letterSpacing: '.1em', fontWeight: 600, marginBottom: '.65rem' }}>Valorisation <span style={{ fontWeight: 400, color: T.t3 }}>— optionnel</span></div>
-                    <Lbl ch="Valeur totale de la poche (€)" /><Inp type="number" min="0" step="0.01" value={valeur} onChange={e => setValeur(e.target.value)} placeholder="0" />
+                    {withdrawalMode ? <div style={{ display: 'grid', gap: 12 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <div style={{ color: T.t2, fontSize: '.74rem' }}>Valeur avant retrait <strong style={{ color: T.t1 }}>{hasKnownValue ? fEUR(knownValue) : 'Non renseignée'}</strong>{known && <div style={{ fontSize: '.65rem', color: T.t3 }}>Dernière observation au {fDt(known.date)}</div>}</div>
+                            {!revalue && <Btn ghost onClick={() => setRevalue(true)}><Pencil size={12} />Actualiser</Btn>}
+                        </div>
+                        {(revalue || !hasKnownValue) && <div><Lbl ch="Valeur actualisée avant retrait (€)" /><Inp aria-label="Valeur actualisée avant retrait" type="number" min="0" step="0.01" value={beforeValue} onChange={e => setBeforeValue(e.target.value)} placeholder={hasKnownValue ? String(knownValue) : '0'} /></div>}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, borderTop: `1px solid ${T.brd}`, paddingTop: 10, flexWrap: 'wrap' }}>
+                            <span style={{ color: T.t2, fontSize: '.74rem' }}>Valeur après retrait</span><output aria-label="Valeur après retrait" style={{ color: T.t1, fontWeight: 700, minHeight: 24 }}>{movement ? fEUR(movement.valueAfter) : 'Non calculable'}</output>
+                        </div>
+                    </div> : <>
+                        <div style={{ fontSize: '.58rem', color: T.t2, textTransform: 'uppercase', letterSpacing: '.1em', fontWeight: 600, marginBottom: '.65rem' }}>Valorisation <span style={{ fontWeight: 400, color: T.t3 }}>— optionnel</span></div>
+                        <Lbl ch={hasTx ? 'Valeur actualisée après apport (€)' : 'Valeur totale de la poche (€)'} /><Inp aria-label="Valeur totale de la poche" type="number" min="0" step="0.01" value={valeur} onChange={e => setValeur(e.target.value)} placeholder={hasTx && movement ? String(movement.valueAfter) : '0'} />
+                        {hasTx && <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 10 }}><span style={{ color: T.t2, fontSize: '.74rem' }}>Valeur après apport</span><output aria-label="Valeur après apport" style={{ color: T.t1, fontWeight: 700, minHeight: 24 }}>{movement ? fEUR(movement.valueAfter) : 'Non calculable'}</output></div>}
+                    </>}
                 </div>
+                {entryError && <div role="alert" style={{ color: AMB, fontSize: '.74rem' }}>{entryError}</div>}
                 <div><Lbl ch="Note" /><Inp value={note} onChange={e => setNote(e.target.value)} placeholder="Contexte, objectif, commentaire…" /></div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: '.68rem', color: ok ? GRN : T.t3, display: 'flex', alignItems: 'center', gap: 5 }}>{ok && <span style={{ width: 6, height: 6, borderRadius: '50%', background: GRN, display: 'inline-block' }} />}{status}</span>
-                    <div style={{ display: 'flex', gap: 6 }}><Btn ghost onClick={onClose}>Annuler</Btn><Btn primary onClick={save} style={{ opacity: ok ? 1 : .4 }}>Enregistrer</Btn></div>
+                    <div style={{ display: 'flex', gap: 6 }}><Btn ghost onClick={onClose}>Annuler</Btn><Btn primary disabled={!ok} onClick={save} style={{ opacity: ok ? 1 : .4 }}>Enregistrer</Btn></div>
                 </div>
             </div>
         </Sheet>
@@ -586,6 +628,23 @@ function ModalEditPoche({ poche, categories = [], onSave, onClose }) {
         </Sheet>
     );
 }
+function ModalClosePocket({ poche, txs, vals, onSave, onClose }) {
+    const T = useT();
+    const [date, setDate] = useState(() => vals.filter(v => v.pocheId === poche.id).map(v => v.date).sort().pop() || localToday());
+    let error = '';
+    try { validatePocketClosures([{ ...poche, closedAt: date }], txs, vals); }
+    catch (err) { error = err.message; }
+    return (
+        <Sheet title={`Clôturer « ${poche.nom} »`} onClose={onClose}>
+            <div style={{ display: 'grid', gap: 14 }}>
+                <div><Lbl ch="Date de clôture" /><Inp type="date" value={date} max={localToday()} onChange={event => setDate(event.target.value)} /></div>
+                {error ? <p role="alert" style={{ color: AMB, margin: 0 }}>{error}</p> : <p style={{ color: T.t2, margin: 0 }}>Les opérations seront en lecture seule. L’historique et le résultat final seront conservés.</p>}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}><Btn ghost onClick={onClose}>Annuler</Btn><Btn primary disabled={!!error} onClick={() => { if (!error) onSave(poche.id, date); }}><Archive size={13} />Confirmer la clôture</Btn></div>
+            </div>
+        </Sheet>
+    );
+}
+
 function ConfirmDel({ msg, onOk, onCancel, title = 'Confirmer', okLabel = 'Supprimer', danger = true }) {
     return (
         <Sheet title={title} onClose={onCancel}>
@@ -895,7 +954,7 @@ function HeroBanner({ gm, ps, vs, ts }) {
             <div style={{ position: 'absolute', bottom: -80, left: -60, width: 380, height: 280, background: `radial-gradient(${ACC}18,transparent 65%)`, pointerEvents: 'none' }} />
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', position: 'relative' }}>
                 <div style={{ padding: isMobile ? '1.5rem 1.25rem 1rem' : '1.75rem 1.5rem 1.75rem 2rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', borderRight: isMobile ? 'none' : `1px solid ${T.brd}`, borderBottom: isMobile ? `1px solid ${T.brd}` : 'none' }}>
-                    <div style={{ fontSize: '.58rem', color: T.t3, textTransform: 'uppercase', letterSpacing: '.18em', fontWeight: 600, marginBottom: 6 }}>Portefeuille total</div>
+                    <div style={{ fontSize: '.58rem', color: T.t3, textTransform: 'uppercase', letterSpacing: '.18em', fontWeight: 600, marginBottom: 6 }}>Portefeuille total{gm.valueEstimated ? ' · estimé' : ''}</div>
                     <div style={{ fontSize: isMobile ? '2.4rem' : '3rem', fontWeight: 800, color: T.t1, letterSpacing: '-.05em', lineHeight: 1, fontVariantNumeric: 'tabular-nums', marginBottom: 12 }}>{fEUR(gm.tv)}</div>
                     <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 10 }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '.24rem .6rem', borderRadius: 6, background: T.s2, border: `1px solid ${T.brd}` }}>
@@ -912,10 +971,11 @@ function HeroBanner({ gm, ps, vs, ts }) {
                         </div>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '.24rem .6rem', borderRadius: 6, background: T.s2, border: `1px solid ${T.brd}` }}>
                             <span style={{ fontSize: '.6rem', color: T.t3, fontWeight: 500 }}>Latent</span>
-                            <span style={{ fontSize: '.78rem', fontWeight: 700, color: gc(gm.latent), fontVariantNumeric: 'tabular-nums' }}>{fEURS(gm.latent)}</span>
+                            <span title={gm.latent === null ? 'Valeurs avant retrait manquantes dans l’historique' : 'Gain sur le capital encore détenu, au coût moyen proportionnel'} style={{ fontSize: '.78rem', fontWeight: 700, color: gc(gm.latent), fontVariantNumeric: 'tabular-nums' }}>{gm.latent === null ? 'Indisponible' : fEURS(gm.latent)}</span>
                         </div>
                     </div>
-                    <div style={{ fontSize: '.7rem', color: T.t3 }}>{ps.length} poche{ps.length > 1 ? 's' : ''}</div>
+                    <div style={{ fontSize: '.7rem', color: T.t3 }}>{ps.filter(p => !p.closedAt).length} active(s) · {ps.filter(p => p.closedAt).length} clôturée(s)</div>
+                    <div style={{ fontSize: '.7rem', color: gc(gm.tg), marginTop: 4 }}>Résultat total {fEURS(gm.tg)}</div>
                 </div>
                 <div style={{ padding: isMobile ? '1rem 1rem .75rem' : '1.25rem 1.25rem 1rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
@@ -949,9 +1009,9 @@ function HeroBanner({ gm, ps, vs, ts }) {
 // ── Poche card ──
 function PocheCard({ p, vals, txs, total, onClick }) {
     const T = useT(); const [h, setH] = useState(false);
-    const gainPct = p.capital > 0 ? p.gainLatent / p.capital : null;
+    const gainPct = p.capital > 0 ? p.gainTotal / p.capital : null;
     const alloc = total > 0 ? Math.min(p.valActu / total, 1) : 0;
-    const isUp = p.gainLatent >= 0;
+    const isUp = p.gainTotal >= 0;
     return (
         <div onClick={onClick} onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}
             style={{ borderRadius: 12, background: T.s1, border: `1px solid ${h ? p.couleur + '50' : T.brd}`, cursor: 'pointer', transition: 'all .18s', transform: h ? 'translateY(-3px)' : 'none', boxShadow: h ? `0 10px 36px ${p.couleur}22` : 'none', overflow: 'hidden', position: 'relative' }}>
@@ -960,7 +1020,7 @@ function PocheCard({ p, vals, txs, total, onClick }) {
                 <Sparkline pocheId={p.id} vals={vals} txs={txs} width={110} height={55} />
             </div>
             <div style={{ padding: '.9rem 1rem', position: 'relative' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: '.6rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: '.6rem', flexWrap: 'wrap', overflowWrap: 'anywhere' }}>
                     <Dot c={p.couleur} sz={7} />
                     <span style={{ fontWeight: 700, fontSize: '.88rem', color: T.t1, flex: 1 }}>{p.nom}</span>
                     {p.categorie && <Tag label={p.categorie} color={p.couleur} />}
@@ -969,6 +1029,8 @@ function PocheCard({ p, vals, txs, total, onClick }) {
                     </span>
                 </div>
                 <div style={{ fontSize: '1.4rem', fontWeight: 800, color: T.t1, letterSpacing: '-.03em', fontVariantNumeric: 'tabular-nums', marginBottom: '.5rem', lineHeight: 1 }}>{fEUR(p.valActu)}</div>
+                {p.valueEstimated && <div style={{ fontSize: '.65rem', color: T.t3, marginBottom: 8 }}>Valeur estimée</div>}
+                {p.closedAt && <div style={{ color: T.t2, fontSize: '.68rem', marginBottom: 8 }}>Clôturée le {fDt(p.closedAt)} · Résultat <strong style={{ color: gc(p.gainTotal) }}>{fEURS(p.gainTotal)}</strong></div>}
                 <div style={{ display: 'flex', gap: 10, fontSize: '.67rem', color: T.t2, marginBottom: '.65rem' }}>
                     <span>Cap. <strong style={{ color: T.t1, fontVariantNumeric: 'tabular-nums' }}>{fEUR(p.capital)}</strong></span>
                     <span style={{ color: T.t3 }}>·</span>
@@ -1004,9 +1066,10 @@ function TxTimeline({ txs, onDel }) {
                                     <Tag label={txL(t.type)} color={col} />
                                     <div style={{ flex: 1 }} />
                                     <span style={{ fontWeight: 700, fontSize: '.83rem', color: isIn ? GRN : T.t1, fontVariantNumeric: 'tabular-nums' }}>{fEUR(t.montant)}</span>
-                                    <button onClick={() => onDel(t.id)} style={{ background: 'none', border: 'none', color: T.t3, cursor: 'pointer', opacity: .5, lineHeight: 0, padding: 4, minWidth: 28, minHeight: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Trash2 size={13} /></button>
+                                    {onDel && <button disabled={!t.id} title={t.id ? 'Supprimer la transaction' : 'Identifiant absent dans le fichier : suppression indisponible'} aria-label="Supprimer la transaction" onClick={() => onDel(t.id)} style={{ background: 'none', border: 'none', color: T.t3, cursor: t.id ? 'pointer' : 'not-allowed', opacity: .5, lineHeight: 0, padding: 4, minWidth: 28, minHeight: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Trash2 size={13} /></button>}
                                 </div>
                                 {t.commentaire && <div style={{ color: T.t2, fontSize: '.67rem', marginTop: 5, lineHeight: 1.45 }}>{t.commentaire}</div>}
+                                {t.valeurAvant !== undefined && <div style={{ color: T.t2, fontSize: '.67rem', marginTop: 5 }}>Valeur avant {t.type === 'retrait' ? 'retrait' : 'apport'} : {fEUR(t.valeurAvant)}</div>}
                             </div>
                         </div>
                     );
@@ -1019,12 +1082,12 @@ function TxTimeline({ txs, onDel }) {
 function AllocationChart({ pm }) {
     const T = useT(); const { isMobile } = useBreakpoint();
     const [mode, setMode] = useState('poche');
-    const categories = useMemo(() => [...new Set(pm.filter(p => p.valActu > 0).map(p => p.categorie?.trim() || 'Sans catégorie'))], [pm]);
+    const categories = useMemo(() => [...new Set(pm.filter(p => !p.closedAt && p.valActu > 0).map(p => p.categorie?.trim() || 'Sans catégorie'))], [pm]);
     const [cat, setCat] = useState('');
     useEffect(() => { if (!categories.includes(cat)) setCat(categories[0] || ''); }, [categories, cat]);
     const catColor = name => PCOLS[Math.abs([...name].reduce((s, ch) => s + ch.charCodeAt(0), 0)) % PCOLS.length];
     const data = useMemo(() => {
-        const active = pm.filter(p => p.valActu > 0);
+        const active = pm.filter(p => !p.closedAt && p.valActu > 0);
         if (mode === 'categorie') {
             return Object.values(active.reduce((acc, p) => {
                 const name = p.categorie?.trim() || 'Sans catégorie';
@@ -1072,7 +1135,7 @@ function PocheDetail({ poche, txs, vals, onBack, onDelTx, onDelVal, onDelPoche, 
     const T = useT(); const { isMobile, isTablet } = useBreakpoint();
     const [sub, setSub] = useState('apercu');
     const [chartMode, setChartMode] = useState('value');
-    const m = useMemo(() => getPocketMetrics(poche.id, txs, vals), [poche, txs, vals]);
+    const m = useMemo(() => getPocketMetrics(poche.id, txs, vals, poche.closedAt), [poche, txs, vals]);
     const pv = useMemo(() => vals.filter(v => v.pocheId === poche.id).sort((a, b) => a.date.localeCompare(b.date)), [poche, vals]);
     const pt = useMemo(() => txs.filter(t => t.pocheId === poche.id).sort((a, b) => b.timestamp.localeCompare(a.timestamp)), [poche, txs]);
     const chart = useMemo(() => buildPocketHistory(poche.id, txs, vals).map(point => ({ ...point, d: point.date })), [poche, txs, vals]);
@@ -1082,13 +1145,13 @@ function PocheDetail({ poche, txs, vals, onBack, onDelTx, onDelVal, onDelPoche, 
     const capColor = T.dark ? '#F8FAFC' : '#111827';
     const lastPoint = chart[chart.length - 1];
     const chartColor = chartMode === 'value' ? VALC : gc(lastPoint?.[chartDataKey]) || poche.couleur;
-    const gainPct = m.capital > 0 ? m.gainLatent / m.capital : null;
+    const gainPct = m.capital > 0 ? m.gainTotal / m.capital : null;
     const { th, td } = useTS();
     const conf = (msg, fn) => setModal({ type: 'confirm', msg, onOk: fn });
 
     const kpis = [
-        { label: 'Valeur', value: fEUR(m.valActu), sub: `Capital : ${fEUR(m.capital)}`, color: poche.couleur },
-        { label: 'Gain', value: fPctS(gainPct), sub: fEURS(m.gainLatent), color: gc(gainPct) },
+        { label: m.valueEstimated ? 'Valeur estimée' : 'Valeur', value: fEUR(m.valActu), sub: `Capital : ${fEUR(m.capital)}`, color: poche.couleur },
+        { label: poche.closedAt ? 'Résultat final' : 'Gain', value: poche.closedAt ? fEURS(m.gainTotal) : fPctS(gainPct), sub: poche.closedAt ? 'Latent : 0 €' : fEURS(m.gainTotal), color: gc(m.gainTotal) },
         { label: 'XIRR', value: fPctS(m.xirr), sub: 'Annualisé net', color: gc(m.xirr), info: XIRR_INFO },
         { label: 'Dietz', value: fPctS(m.dietz), sub: 'Période complète', color: gc(m.dietz), info: DIETZ_INFO },
     ];
@@ -1106,11 +1169,13 @@ function PocheDetail({ poche, txs, vals, onBack, onDelTx, onDelVal, onDelPoche, 
                     {poche.categorie && <Tag label={poche.categorie} color={poche.couleur} />}
                     <Pencil size={11} color={T.t2} />
                 </button>
-                <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-                    {!isMobile && <Btn primary onClick={() => setModal({ type: 'saisie', poche: poche.id })}><Plus size={11} />Saisie</Btn>}
-                    <Btn danger style={{ padding: '.4rem .7rem', minHeight: 36 }} onClick={() => conf(`Supprimer "${poche.nom}" ?`, () => { onDelPoche(poche.id); onBack(); })}><Trash2 size={isMobile ? 14 : 11} /></Btn>
+                <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {!poche.closedAt && !isMobile && <Btn primary onClick={() => setModal({ type: 'saisie', poche: poche.id })}><Plus size={11} />Saisie</Btn>}
+                    <Btn ghost onClick={() => setModal({ type: poche.closedAt ? 'reopen' : 'closePocket', poche })}>{poche.closedAt ? <RotateCcw size={13} /> : <Archive size={13} />}{poche.closedAt ? 'Rouvrir' : 'Clôturer'}</Btn>
+                    <Btn danger title="Supprimer la poche et son historique" aria-label="Supprimer la poche et son historique" style={{ padding: '.4rem .7rem', minHeight: 36 }} onClick={() => conf(`Supprimer « ${poche.nom} » et toutes ses transactions et valorisations ? Son historique et ses résultats seront effacés.`, () => { onDelPoche(poche.id); onBack(); })}><Trash2 size={isMobile ? 14 : 11} /></Btn>
                 </div>
             </div>
+            {poche.closedAt && <div role="status" style={{ color: T.t2, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 7 }}><Archive size={14} />Clôturée le {fDt(poche.closedAt)} · Opérations en lecture seule</div>}
 
             <div style={{ borderRadius: 14, overflow: 'hidden', border: `1px solid ${poche.couleur}30`, background: T.s1, boxShadow: `0 0 50px ${poche.couleur}10`, marginBottom: '.8rem', position: 'relative' }}>
                 <div style={{ position: 'absolute', inset: 0, background: T.dark ? `${poche.couleur}05` : `${poche.couleur}03`, pointerEvents: 'none' }} />
@@ -1171,9 +1236,12 @@ function PocheDetail({ poche, txs, vals, onBack, onDelTx, onDelVal, onDelPoche, 
                                 </div>
                             ))}
                         </SC>
-                        <SC title="Gain">
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.72rem', color: T.t2, marginBottom: 4 }}><span>Valeur - capital</span><strong style={{ color: gc(m.gainNonRealise), fontVariantNumeric: 'tabular-nums' }}>{fEURS(m.gainNonRealise)}</strong></div>
-                            <div style={{ height: 5, borderRadius: 99, background: T.s3, overflow: 'hidden' }}><div style={{ width: `${Math.min(100, Math.abs(m.gainNonRealise) / Math.max(Math.abs(m.gainNonRealise), 1) * 100)}%`, height: '100%', background: poche.couleur, opacity: m.gainNonRealise >= 0 ? 1 : .55 }} /></div>
+                        <SC title={poche.closedAt ? 'Résultat final' : 'Gain'}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.72rem', color: T.t2, marginBottom: 4 }}><span>{poche.closedAt ? 'Retraits - apports' : 'Valeur - capital'}</span><strong style={{ color: gc(m.gainTotal), fontVariantNumeric: 'tabular-nums' }}>{fEURS(m.gainTotal)}</strong></div>
+                            <div title="Coût moyen proportionnel du capital encore détenu, hors calcul fiscal" style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', fontSize: '.72rem', color: T.t2, marginBottom: 4 }}><span>Latent</span><strong style={{ color: gc(m.gainLatent) }}>{m.gainLatent === null ? 'Indisponible' : fEURS(m.gainLatent)}</strong></div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', fontSize: '.72rem', color: T.t2, marginBottom: 4 }}><span>Réalisé</span><strong style={{ color: gc(m.gainRealise) }}>{m.gainRealise === null ? 'Indisponible' : fEURS(m.gainRealise)}</strong></div>
+                            {m.gainLatent === null && <div style={{ fontSize: '.67rem', color: T.t3, marginBottom: 6 }}>Valeurs avant retrait manquantes dans l’historique.</div>}
+                            <div style={{ height: 5, borderRadius: 99, background: T.s3, overflow: 'hidden' }}><div style={{ width: `${Math.min(100, Math.abs(m.gainTotal) / Math.max(Math.abs(m.gainTotal), 1) * 100)}%`, height: '100%', background: poche.couleur, opacity: m.gainTotal >= 0 ? 1 : .55 }} /></div>
                         </SC>
                     </div>
                 </div>
@@ -1181,13 +1249,13 @@ function PocheDetail({ poche, txs, vals, onBack, onDelTx, onDelVal, onDelPoche, 
             {sub === 'transactions' && (
                 <div>
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '.9rem' }}>
-                        <Btn primary onClick={() => setModal({ type: 'saisie', poche: poche.id })}><Plus size={11} />Ajouter</Btn>
+                        {!poche.closedAt && <Btn primary onClick={() => setModal({ type: 'saisie', poche: poche.id })}><Plus size={11} />Ajouter</Btn>}
                     </div>
-                    <TxTimeline txs={pt} onDel={id => conf('Supprimer cette transaction ?', () => onDelTx(id))} />
+                    <TxTimeline txs={pt} onDel={poche.closedAt ? null : id => conf('Supprimer cette transaction ?', () => onDelTx(id))} />
                 </div>
             )}
             {sub === 'valorisations' && (
-                <SC title={`Valorisations (${pv.length})`} action={<Btn ghost onClick={() => setModal({ type: 'saisie', poche: poche.id })}><Plus size={11} />Ajouter</Btn>} noPad>
+                <SC title={`Valorisations (${pv.length})`} action={!poche.closedAt && <Btn ghost onClick={() => setModal({ type: 'saisie', poche: poche.id })}><Plus size={11} />Ajouter</Btn>} noPad>
                     <div style={{ padding: '0 1.1rem 1rem', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                             <thead><tr><th style={th}>Date</th><th style={{ ...th, textAlign: 'right' }}>Valeur</th><th style={th} /></tr></thead>
@@ -1197,7 +1265,7 @@ function PocheDetail({ poche, txs, vals, onBack, onDelTx, onDelVal, onDelPoche, 
                                     <TRow key={v.id}>
                                         <td style={{ ...td, color: T.t2, whiteSpace: 'nowrap' }}><div>{fDt(v.date)}</div>{v.commentaire && <div style={{ fontSize: '.66rem', color: T.t3, marginTop: 3, whiteSpace: 'normal' }}>{v.commentaire}</div>}</td>
                                         <td style={{ ...td, textAlign: 'right', fontWeight: 600, color: poche.couleur }}>{fEUR(v.valeur)}</td>
-                                        <td style={td}><button onClick={() => conf('Supprimer cette valorisation ?', () => onDelVal(v.id))} style={{ background: 'none', border: 'none', color: LOSSC, cursor: 'pointer', opacity: .4, lineHeight: 0, padding: 4, minWidth: 32, minHeight: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Trash2 size={13} /></button></td>
+                                        <td style={td}>{!poche.closedAt && <button disabled={!!v.transactionId || !v.id} title={!v.id ? 'Identifiant absent dans le fichier : suppression indisponible' : v.transactionId ? 'Valeur liée au mouvement : supprimez la transaction correspondante' : 'Supprimer la valorisation'} aria-label="Supprimer la valorisation" onClick={() => conf('Supprimer cette valorisation ?', () => onDelVal(v.id))} style={{ background: 'none', border: 'none', color: LOSSC, cursor: v.transactionId || !v.id ? 'not-allowed' : 'pointer', opacity: .4, lineHeight: 0, padding: 4, minWidth: 32, minHeight: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Trash2 size={13} /></button>}</td>
                                     </TRow>
                                 ))}
                             </tbody>
@@ -1232,7 +1300,7 @@ function Dashboard({ pm, gm, ts, vs, ps, setSelP, setModal, dataMode, impJSON, s
     const { th, thR, td, tdR } = useTS();
     const [sort, setSort] = useState({ key: 'valActu', dir: 'desc' });
     const sortedPm = useMemo(() => {
-        const val = (p, key) => key === 'nom' ? (p.nom || '').toLocaleLowerCase('fr-FR') : key === 'gainPct' ? (p.capital > 0 ? p.gainLatent / p.capital : -Infinity) : p[key] ?? -Infinity;
+        const val = (p, key) => key === 'nom' ? (p.nom || '').toLocaleLowerCase('fr-FR') : key === 'gainPct' ? (p.capital > 0 ? p.gainTotal / p.capital : -Infinity) : p[key] ?? -Infinity;
         return [...pm].sort((a, b) => {
             const av = val(a, sort.key), bv = val(b, sort.key);
             const cmp = typeof av === 'string' ? av.localeCompare(bv, 'fr-FR') : av - bv;
@@ -1258,7 +1326,7 @@ function Dashboard({ pm, gm, ts, vs, ps, setSelP, setModal, dataMode, impJSON, s
                                     {!isMobile && <H k="capital" right>Capital</H>}
                                     <H k="valActu" right>Valeur</H>
                                     <H k="gainPct" right>Gain %</H>
-                                    {!isMobile && <H k="gainLatent" right>Gain €</H>}
+                                    {!isMobile && <H k="gainTotal" right>Résultat €</H>}
                                     <H k="xirr" right>
                                         <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: 2, width: '100%' }}>
                                             XIRR<InfoBtn {...XIRR_INFO} />
@@ -1273,14 +1341,14 @@ function Dashboard({ pm, gm, ts, vs, ps, setSelP, setModal, dataMode, impJSON, s
                             </thead>
                             <tbody>
                                 {sortedPm.map(p => {
-                                    const gp = p.capital > 0 ? p.gainLatent / p.capital : null;
+                                    const gp = p.capital > 0 ? p.gainTotal / p.capital : null;
                                     return (
                                         <TRow key={p.id} onClick={() => setSelP(p.id)}>
-                                            <td style={td}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}><Dot c={p.couleur} sz={7} /><span style={{ fontWeight: 600, color: T.t1 }}>{p.nom}</span></span></td>
+                                            <td style={td}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}><Dot c={p.couleur} sz={7} /><span style={{ fontWeight: 600, color: T.t1 }}>{p.nom}</span>{p.closedAt && <Tag label="Clôturée" color={T.t2} />}</span></td>
                                             {!isMobile && <td style={{ ...tdR, color: T.t2 }}>{fEUR(p.capital)}</td>}
-                                            <td style={{ ...tdR, fontWeight: 600, color: ACC }}>{fEUR(p.valActu)}</td>
+                                            <td style={{ ...tdR, fontWeight: 600, color: ACC }}>{fEUR(p.valActu)}{p.valueEstimated && <div style={{ fontSize: '.6rem', color: T.t3 }}>Estimée</div>}</td>
                                             <td style={{ ...tdR, fontWeight: 700, color: gc(gp) }}>{fPctS(gp)}</td>
-                                            {!isMobile && <td style={{ ...tdR, fontWeight: 500, color: gc(p.gainLatent) }}>{fEURS(p.gainLatent)}</td>}
+                                            {!isMobile && <td style={{ ...tdR, fontWeight: 500, color: gc(p.gainTotal) }}>{fEURS(p.gainTotal)}</td>}
                                             <td style={{ ...tdR, fontWeight: 700, color: gc(p.xirr) }}>{fPctS(p.xirr)}</td>
                                             {!isMobile && <td style={{ ...tdR, color: gc(p.dietz) }}>{fPctS(p.dietz)}</td>}
                                         </TRow>
@@ -1300,23 +1368,30 @@ function Dashboard({ pm, gm, ts, vs, ps, setSelP, setModal, dataMode, impJSON, s
 // ── Poches page ──
 function PochesPage({ pm, vs, ts, gm, setSelP, setModal }) {
     const T = useT();
-    const groups = useMemo(() => pm.reduce((acc, p) => { const k = p.categorie?.trim() || 'Sans catégorie'; return { ...acc, [k]: [...(acc[k] || []), p] }; }, {}), [pm]);
+    const sections = [
+        { label: 'Actives', pockets: pm.filter(p => !p.closedAt) },
+        { label: 'Clôturées', pockets: pm.filter(p => p.closedAt) },
+    ];
     return (
         <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
                 <div>
                     <h2 style={{ margin: 0, fontSize: '.9rem', fontWeight: 700, color: T.t1, letterSpacing: '-.02em' }}>Mes poches</h2>
-                    <div style={{ fontSize: '.63rem', color: T.t2, marginTop: 2 }}>{pm.length} poche{pm.length > 1 ? 's' : ''} · Appuyez pour voir le détail</div>
+                    <div style={{ fontSize: '.63rem', color: T.t2, marginTop: 2 }}>{pm.length} poche{pm.length > 1 ? 's' : ''}</div>
                 </div>
                 <Btn primary onClick={() => setModal({ type: 'p' })}><Plus size={12} />Nouvelle poche</Btn>
             </div>
             <div style={{ display: 'grid', gap: '1rem' }}>
-                {Object.entries(groups).map(([cat, items]) => <div key={cat}>
-                    <div style={{ fontSize: '.62rem', color: T.t2, textTransform: 'uppercase', letterSpacing: '.12em', fontWeight: 700, marginBottom: '.55rem' }}>{cat}</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', gap: '.75rem' }}>
-                        {items.map(p => <PocheCard key={p.id} p={p} vals={vs} txs={ts} total={gm.tv} onClick={() => setSelP(p.id)} />)}
-                    </div>
-                </div>)}
+                {pm.length > 0 && sections.map(section => <section key={section.label}>
+                    <h3 style={{ color: T.t1, fontSize: '.85rem', margin: '0 0 .7rem', paddingBottom: 8, borderBottom: `1px solid ${T.brd}` }}>{section.label} ({section.pockets.length})</h3>
+                    {!section.pockets.length && <p style={{ color: T.t2, fontSize: '.75rem' }}>Aucune poche {section.label === 'Actives' ? 'active' : 'clôturée'}.</p>}
+                    {[...new Set(section.pockets.map(p => p.categorie?.trim() || 'Sans catégorie'))].map(cat => <div key={cat} style={{ marginBottom: 14 }}>
+                        <div style={{ fontSize: '.62rem', color: T.t2, textTransform: 'uppercase', letterSpacing: '.12em', fontWeight: 700, marginBottom: '.55rem' }}>{cat}</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(220px,100%),1fr))', gap: '.75rem' }}>
+                            {section.pockets.filter(p => (p.categorie?.trim() || 'Sans catégorie') === cat).map(p => <PocheCard key={p.id} p={p} vals={vs} txs={ts} total={gm.tv} onClick={() => setSelP(p.id)} />)}
+                        </div>
+                    </div>)}
+                </section>)}
                 {!pm.length && <div style={{ borderRadius: 12, border: `1px dashed ${T.brd}`, padding: '3rem', textAlign: 'center', color: T.t2, fontSize: '.8rem', gridColumn: '1/-1' }}>Aucune poche. Commencez par en créer une.</div>}
             </div>
         </div>
@@ -1572,7 +1647,7 @@ function SimulationPage({ config, onChange, onReset, portfolio = [] }: { config:
         change({ ...draft, pockets });
         setOpenPocket(null); setSelected(null);
     };
-    const importable = portfolio.filter(pocket => pocket.valActu > 0);
+    const importable = portfolio.filter(pocket => !pocket.closedAt && pocket.valActu > 0);
     const fromPortfolio = () => replacePockets(importable.map((pocket, index) => ({
         ...createSimulationPocket(index, /^#[0-9a-f]{6}$/i.test(pocket.couleur || '') ? pocket.couleur : PCOLS[index % PCOLS.length]),
         name: String(pocket.nom || '').trim().slice(0, 48) || `Poche ${index + 1}`,
@@ -1747,6 +1822,8 @@ export default function App() {
     const [simulationRevision, setSimulationRevision] = useState(0);
     const [simulationNotice, setSimulationNotice] = useState('');
     const [ready, setReady] = useState(false);
+    const [loadError, setLoadError] = useState('');
+    const rawBackup = useRef('');
     const [dataMode, setDataMode] = useState('empty');
     const [showWelcome, setShowWelcome] = useState(false);
     const [needsExport, setNeedsExport] = useState(false);
@@ -1759,13 +1836,11 @@ export default function App() {
             try {
                 const r = await window.storage.get('inv_v9');
                 if (r) {
+                    rawBackup.current = r.value;
                     const d = JSON.parse(r.value);
-                    const hasSavedShape = ['p', 't', 'v', 'poches', 'transactions', 'valorisations'].some(k => Array.isArray(d[k])) || d.s !== undefined;
-                    if (!hasSavedShape) throw new Error('Format non reconnu');
-                    const nextPs = Array.isArray(d.p) ? d.p : Array.isArray(d.poches) ? d.poches : [];
-                    const nextTs = Array.isArray(d.t) ? d.t : Array.isArray(d.transactions) ? d.transactions : [];
-                    const nextVs = Array.isArray(d.v) ? d.v : Array.isArray(d.valorisations) ? d.valorisations : [];
-                    setPs(nextPs); setTs(nextTs); setVs(nextVs); setDataMode(d.source === 'file' ? 'file' : 'saved'); setShowWelcome(false);
+                    const portfolio = readPortfolioData(d);
+                    if (!portfolio && d.s === undefined) throw new Error('Format non reconnu');
+                    setPs(portfolio?.pockets || []); setTs(portfolio?.transactions || []); setVs(portfolio?.valuations || []); setDataMode(d.source === 'file' ? 'file' : 'saved'); setShowWelcome(false);
                     if (d.s !== undefined) {
                         try { setSimulation(readSimulationConfig(d.s)); }
                         catch { setSimulationNotice('Les paramètres de simulation sauvegardés étaient invalides et ont été réinitialisés. Votre portefeuille est conservé.'); }
@@ -1774,18 +1849,18 @@ export default function App() {
                     setPs([]); setTs([]); setVs([]); setDataMode('empty'); setShowWelcome(true);
                 }
             }
-            catch { setPs([]); setTs([]); setVs([]); setDataMode('empty'); setShowWelcome(true); }
+            catch (err) { setLoadError(err.message || 'Lecture de la sauvegarde impossible.'); setShowWelcome(false); }
             setReady(true);
         })();
     }, []);
-    useEffect(() => { if (!ready || showWelcome || dataMode === 'demo') return; window.storage.set('inv_v9', JSON.stringify({ p: ps, t: ts, v: vs, s: simulation, source: dataMode === 'file' ? 'file' : 'saved' })).catch(() => { }); }, [ps, ts, vs, simulation, ready, showWelcome, dataMode]);
+    useEffect(() => { if (!ready || loadError || showWelcome || dataMode === 'demo') return; window.storage.set('inv_v9', JSON.stringify({ p: ps, t: ts, v: vs, s: simulation, source: dataMode === 'file' ? 'file' : 'saved' })).catch(() => { }); }, [ps, ts, vs, simulation, ready, loadError, showWelcome, dataMode]);
 
-    const pm = useMemo(() => ps.map(p => ({ ...p, ...getPocketMetrics(p.id, ts, vs) })), [ps, ts, vs]);
+    const pm = useMemo(() => ps.map(p => ({ ...p, ...getPocketMetrics(p.id, ts, vs, p.closedAt) })), [ps, ts, vs]);
     const categories = useMemo(() => [...new Set(ps.map(p => p.categorie?.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr-FR')), [ps]);
     const gm = useMemo(() => getPortfolioMetrics(ps, ts, vs, pm), [pm, ps, ts, vs]);
 
     const markPersonal = () => { setDataMode(m => m === 'file' ? 'file' : 'saved'); setNeedsExport(true); setShowWelcome(false); };
-    const startEmpty = () => { setPs([]); setTs([]); setVs([]); setDataMode('empty'); setNeedsExport(false); setShowWelcome(false); setSelP(null); setPage('dashboard'); };
+    const startEmpty = () => { if (loadError && !window.confirm('Remplacer la sauvegarde locale par un portefeuille vide ? Téléchargez d’abord la copie originale.')) return; setLoadError(''); setPs([]); setTs([]); setVs([]); setDataMode('empty'); setNeedsExport(false); setShowWelcome(false); setSelP(null); setPage('dashboard'); };
     const useDemoAsBase = () => { setDataMode('saved'); setNeedsExport(true); setShowWelcome(false); };
     const disconnectFile = async () => {
         try {
@@ -1795,17 +1870,50 @@ export default function App() {
         setPs([]); setTs([]); setVs([]); setDataMode('empty'); setNeedsExport(false); setShowWelcome(true); setSelP(null); setPage('dashboard'); setModal(null);
     };
 
-    const handleSaisie = (pocheId, txData, valeur, date, note = '') => {
-        markPersonal();
-        if (txData) setTs(p => [...p, { id: uid(), type: txData.type, montant: txData.montant, timestamp: date, pocheId, commentaire: txData.commentaire || note }]);
-        if (valeur != null) setVs(p => [...p, { id: uid(), pocheId, valeur, date, commentaire: note }]);
-        setModal(null);
+    const handleSaisie = (pocheId, txData, valeur, date, note = '', updatedValue?: number) => {
+        try {
+            assertPocketWritable(ps, pocheId);
+            assertHistoryEditable(pocheId, date, vs);
+            const movement = txData?.type === 'retrait' ? prepareWithdrawal(pocheId, txData.montant, date, vs, updatedValue, ts)
+                : txData ? prepareContribution(pocheId, txData.montant, date, vs, ts, valeur ?? undefined) : null;
+            const transactionId = txData ? uid() : undefined;
+            const nextTs = txData ? [...ts, { id: transactionId, type: txData.type, montant: txData.montant, timestamp: date, pocheId, commentaire: txData.commentaire || note, valeurAvant: movement.valueBefore }] : ts;
+            const nextVs = movement || valeur != null ? [...vs, { id: uid(), pocheId, valeur: movement ? movement.valueAfter : valeur, date, commentaire: note, ...(movement ? { transactionId } : {}) }] : vs;
+            validatePortfolio(ps, nextTs, nextVs);
+            markPersonal(); setTs(nextTs); setVs(nextVs); setModal(null);
+        }
+        catch (err) { alert(err.message); return; }
     };
     const addP = p => { markPersonal(); setPs(pr => [...pr, { ...p, id: uid(), createdAt: TODAY }]); setModal(null); };
     const delP = id => { markPersonal(); setPs(p => p.filter(x => x.id !== id)); setTs(p => p.filter(t => t.pocheId !== id)); setVs(p => p.filter(v => v.pocheId !== id)); };
-    const updateP = (id, patch) => { markPersonal(); setPs(p => p.map(x => x.id === id ? { ...x, ...patch } : x)); };
-    const delTx = id => { markPersonal(); setTs(p => p.filter(t => t.id !== id)); };
-    const delV = id => { markPersonal(); setVs(p => p.filter(v => v.id !== id)); };
+    const updateP = (id, patch) => {
+        const next = ps.map(p => p.id === id ? { ...p, ...patch } : p);
+        try { validatePocketClosures(next, ts, vs); }
+        catch (err) { alert(err.message); return false; }
+        markPersonal(); setPs(next); return true;
+    };
+    const delTx = id => {
+        if (!id) return;
+        const transaction = ts.find(t => t.id === id); if (!transaction) return;
+        const linkedIndex = vs.findIndex(v => v.transactionId === id);
+        try {
+            assertPocketWritable(ps, transaction.pocheId);
+            assertHistoryEditable(transaction.pocheId, transaction.timestamp, vs, linkedIndex);
+        }
+        catch (err) { alert(err.message); return; }
+        markPersonal(); setTs(p => p.filter(t => t.id !== id)); setVs(p => p.filter(v => v.transactionId !== id));
+    };
+    const delV = id => {
+        if (!id) return;
+        const valuation = vs.find(v => v.id === id); if (!valuation) return;
+        try {
+            assertPocketWritable(ps, valuation.pocheId);
+            assertHistoryEditable(valuation.pocheId, valuation.date, vs, vs.indexOf(valuation));
+        }
+        catch (err) { alert(err.message); return; }
+        if (valuation.transactionId) { alert('Cette valeur est liée à un mouvement. Supprimez la transaction correspondante.'); return; }
+        markPersonal(); setVs(p => p.filter(v => v.id !== id));
+    };
 
     const expJSON = () => {
         try {
@@ -1823,11 +1931,9 @@ export default function App() {
             try {
                 const d = JSON.parse(ev.target.result);
                 const importedSimulation = d.simulation !== undefined ? readSimulationConfig(d.simulation) : undefined;
-                const nextPs = Array.isArray(d.poches) ? d.poches : Array.isArray(d.p) ? d.p : null;
-                const nextTs = Array.isArray(d.transactions) ? d.transactions : Array.isArray(d.t) ? d.t : null;
-                const nextVs = Array.isArray(d.valorisations) ? d.valorisations : Array.isArray(d.v) ? d.v : null;
-                if (!nextPs && !nextTs && !nextVs && !importedSimulation) throw new Error('Format non reconnu');
-                if (nextPs || nextTs || nextVs) { setPs(nextPs || []); setTs(nextTs || []); setVs(nextVs || []); setDataMode('file'); setNeedsExport(false); setShowWelcome(false); setSelP(null); setPage('dashboard'); }
+                const portfolio = readPortfolioData(d);
+                if (!portfolio && !importedSimulation) throw new Error('Format non reconnu');
+                if (portfolio) { setLoadError(''); setPs(portfolio.pockets); setTs(portfolio.transactions); setVs(portfolio.valuations); setDataMode('file'); setNeedsExport(false); setShowWelcome(false); setSelP(null); setPage('dashboard'); }
                 if (importedSimulation) { setSimulation(importedSimulation); setSimulationRevision(revision => revision + 1); setSimulationNotice(''); }
             }
             catch (err) { alert('Fichier invalide : ' + err.message); }
@@ -1838,15 +1944,26 @@ export default function App() {
     const detailPoche = selP ? ps.find(p => p.id === selP) : null;
     const renderModal = () => {
         if (!modal) return null;
-        if (modal.type === 'saisie') return <ModalSaisie poches={ps} defPoche={modal.poche} onSave={handleSaisie} onClose={() => setModal(null)} />;
+        if (modal.type === 'saisie') return <ModalSaisie poches={ps.filter(p => !p.closedAt)} txs={ts} vals={vs} defPoche={modal.poche} onSave={handleSaisie} onClose={() => setModal(null)} />;
+        if (modal.type === 'closePocket') return <ModalClosePocket poche={modal.poche} txs={ts} vals={vs} onSave={(id, date) => { if (updateP(id, { closedAt: date })) setModal(null); }} onClose={() => setModal(null)} />;
+        if (modal.type === 'reopen') return <ConfirmDel title="Rouvrir la poche" msg={`Rouvrir « ${modal.poche.nom} » ? Les transactions et valorisations existantes seront conservées.`} okLabel="Rouvrir" danger={false} onOk={() => { if (updateP(modal.poche.id, { closedAt: undefined })) setModal(null); }} onCancel={() => setModal(null)} />;
         if (modal.type === 'p') return <ModalPoche onAdd={addP} onClose={() => setModal(null)} count={ps.length} categories={categories} />;
-        if (modal.type === 'editPoche') return <ModalEditPoche poche={modal.poche} categories={categories} onSave={(id, patch) => { updateP(id, patch); setModal(null); }} onClose={() => setModal(null)} />;
+        if (modal.type === 'editPoche') return <ModalEditPoche poche={modal.poche} categories={categories} onSave={(id, patch) => { if (updateP(id, patch)) setModal(null); }} onClose={() => setModal(null)} />;
         if (modal.type === 'confirm') return <ConfirmDel msg={modal.msg} onOk={() => { modal.onOk(); setModal(null); }} onCancel={() => setModal(null)} />;
         if (modal.type === 'disconnect') return <ConfirmDel title="Déconnecter le fichier" msg="La copie locale sera effacée de ce navigateur. Vos données restent dans votre fichier exporté, mais elles ne seront plus chargées ici." okLabel="Déconnecter" onOk={() => { disconnectFile(); setModal(null); }} onCancel={() => setModal(null)} />;
         return null;
     };
 
     if (!ready) return <div style={{ background: '#0A0A0E', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3E3E50', fontSize: '.82rem' }}>Chargement…</div>;
+    if (loadError) return <TC.Provider value={T}><main style={{ minHeight: '100vh', background: T.bg, color: T.t1, padding: 24, boxSizing: 'border-box' }}>
+        <h1 style={{ fontSize: '1.2rem' }}>Sauvegarde locale non chargée</h1>
+        <p role="alert">{loadError}</p><p>La copie originale est conservée. Importez un fichier corrigé ou téléchargez-la avant de recommencer.</p>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <Btn ghost disabled={!rawBackup.current} onClick={() => { const url = URL.createObjectURL(new Blob([rawBackup.current], { type: 'application/json' })); const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'investtrack_recuperation.json'; document.body.appendChild(anchor); anchor.click(); anchor.remove(); setTimeout(() => URL.revokeObjectURL(url), 200); }}><Download size={14} />Copie originale</Btn>
+            <label style={{ display: 'inline-flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}><Upload size={14} />Importer<input type="file" accept=".json" onChange={impJSON} style={{ maxWidth: '100%' }} /></label>
+            <Btn danger onClick={startEmpty}>Recommencer à vide</Btn>
+        </div>
+    </main></TC.Provider>;
 
     const appBg = mode === 'dark' ? `radial-gradient(ellipse 60% 50% at 8% 92%,${ACC}12 0%,transparent 50%),radial-gradient(ellipse 50% 40% at 92% 8%,rgba(255,100,80,0.07) 0%,transparent 45%),#0A0A0E` : T.bg;
     const mainPb = isMobile ? 'calc(76px + env(safe-area-inset-bottom, 0px))' : '1.25rem';
