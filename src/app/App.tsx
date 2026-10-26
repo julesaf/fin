@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useId, createContext, useContext } from "react";
+import type { ButtonHTMLAttributes, CSSProperties, HTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
 import { ComposedChart, Area, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip as RT, ResponsiveContainer, Legend, ReferenceArea, ReferenceLine } from "recharts";
+import type { PieLabelRenderProps } from "recharts";
 import { Plus, Download, Upload, X, Trash2, ArrowLeft, TrendingUp, TrendingDown, Sun, Moon, ArrowUpRight, ArrowDownRight, LayoutDashboard, Layers, Pencil, Check, LogOut, ShieldCheck, CloudOff, PieChart as PieChartIcon, ChartNoAxesCombined, RotateCcw, SlidersHorizontal, ChevronDown, Square, Archive } from "lucide-react";
 import {
     ACCENT_COLOR as ACC,
@@ -39,9 +41,14 @@ import {
     getPocketValueAtDate,
     prepareContribution,
     prepareWithdrawal,
+    type Pocket,
+    type PocketMetrics,
+    type Transaction,
+    type Valuation,
 } from "../domain/portfolioAnalytics";
 import { createDarkTheme, createLightTheme } from "../theme/theme";
 import { simulate, createSimulationConfig, createSimulationPocket, readSimulationConfig, simulationCsv, type SimulationConfig, type SimulationPocket, type MonteCarloResult } from '../domain/simulation';
+import { createPortfolioPersistence, PORTFOLIO_STORAGE_KEY, StorageConflictError } from '../utils/portfolioStorage';
 
 const TC = createContext(createDarkTheme());
 const useT = () => useContext(TC);
@@ -56,7 +63,7 @@ function useBreakpoint() {
 // ── Info modal ──
 function InfoModal({ onClose, title, lines }) {
     const T = useT();
-    const B = { fontFamily: 'system-ui,-apple-system,sans-serif', textTransform: 'none', letterSpacing: 'normal', fontStyle: 'normal', textAlign: 'left', whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'break-word', lineHeight: 1.5 };
+    const B: CSSProperties = { fontFamily: 'system-ui,-apple-system,sans-serif', textTransform: 'none', letterSpacing: 'normal', fontStyle: 'normal', textAlign: 'left', whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'break-word', lineHeight: 1.5 };
     const tx1 = T.dark ? '#EAEAF8' : '#111';
     const tx2 = T.dark ? '#8080AA' : '#6666AA';
     const tx3 = T.dark ? '#5050808' : '#9898C0';
@@ -356,9 +363,9 @@ function PerfLineChart({ data, dataKey, labelKey, height, pct }) {
     );
 }
 
-function KpiCard({ label, value, sub, color, hero }) {
+function KpiCard({ label, value, sub, color, hero }: { label: ReactNode; value: ReactNode; sub?: ReactNode; color?: string; hero?: boolean }) {
     const T = useT(); const c = color || T.t1;
-    const valStyle = hero
+    const valStyle: CSSProperties = hero
         ? { fontSize: '1.8rem', fontWeight: 700, letterSpacing: '-.04em', lineHeight: 1, fontVariantNumeric: 'tabular-nums', background: `linear-gradient(135deg,${ACC},#FF8A8A)`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }
         : { fontSize: '1.55rem', fontWeight: 700, letterSpacing: '-.04em', lineHeight: 1, fontVariantNumeric: 'tabular-nums', color: c };
     return (
@@ -374,7 +381,7 @@ function KpiCard({ label, value, sub, color, hero }) {
     );
 }
 
-function SC({ title, action, children, style: xs, noPad }) {
+function SC({ title, action, children, style: xs, noPad }: { title?: ReactNode; action?: ReactNode; children: ReactNode; style?: CSSProperties; noPad?: boolean }) {
     const T = useT();
     return (
         <div style={{ borderRadius: 12, background: T.s1, border: `1px solid ${T.brd}`, overflow: 'hidden', ...(xs || {}) }}>
@@ -387,9 +394,9 @@ function SC({ title, action, children, style: xs, noPad }) {
     );
 }
 
-function useTS() {
+function useTS(): Record<'th' | 'thR' | 'td' | 'tdR', CSSProperties> {
     const T = useT();
-    const base = { borderBottom: `1px solid ${T.brd}`, verticalAlign: 'middle', fontVariantNumeric: 'tabular-nums', fontSize: '.75rem' };
+    const base: CSSProperties = { borderBottom: `1px solid ${T.brd}`, verticalAlign: 'middle', fontVariantNumeric: 'tabular-nums', fontSize: '.75rem' };
     return {
         th: { ...base, padding: '.42rem .7rem', color: T.t2, fontWeight: 600, fontSize: '.58rem', textTransform: 'uppercase', letterSpacing: '.1em', textAlign: 'left', background: T.s2, whiteSpace: 'nowrap' },
         thR: { ...base, padding: '.42rem .7rem', color: T.t2, fontWeight: 600, fontSize: '.58rem', textTransform: 'uppercase', letterSpacing: '.1em', textAlign: 'right', background: T.s2, whiteSpace: 'nowrap' },
@@ -397,7 +404,7 @@ function useTS() {
         tdR: { ...base, padding: '.48rem .7rem', textAlign: 'right' },
     };
 }
-function TRow({ onClick, children }) {
+function TRow({ onClick, children }: Pick<HTMLAttributes<HTMLTableRowElement>, 'onClick' | 'children'>) {
     const T = useT(); const [h, setH] = useState(false);
     return <tr onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)} onClick={onClick} style={{ background: h ? `${ACC}08` : 'transparent', cursor: onClick ? 'pointer' : 'default', transition: 'background .1s' }}>{children}</tr>;
 }
@@ -450,8 +457,8 @@ function AnnualTable({ pid, txs, vals }) {
 
 // ── Form helpers ──
 function Lbl({ ch }) { const T = useT(); return <label style={{ fontSize: '.68rem', color: T.t2, display: 'block', marginBottom: 4, fontWeight: 500, letterSpacing: '.04em' }}>{ch}</label>; }
-function Inp({ style: xs, ...p }) { const T = useT(); return <input style={{ background: T.inp, border: `1px solid ${T.brd}`, borderRadius: 8, color: T.t1, padding: '.52rem .75rem', width: '100%', fontSize: '16px', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', fontVariantNumeric: 'tabular-nums', ...(xs || {}) }} {...p} />; }
-function Sel({ children, ...p }) { const T = useT(); return <select style={{ background: T.inp, border: `1px solid ${T.brd}`, borderRadius: 8, color: T.t1, padding: '.52rem .75rem', width: '100%', fontSize: '16px', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} {...p}>{children}</select>; }
+function Inp({ style: xs, ...p }: InputHTMLAttributes<HTMLInputElement>) { const T = useT(); return <input style={{ background: T.inp, border: `1px solid ${T.brd}`, borderRadius: 8, color: T.t1, padding: '.52rem .75rem', width: '100%', fontSize: '16px', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', fontVariantNumeric: 'tabular-nums', ...(xs || {}) }} {...p} />; }
+function Sel({ children, ...p }: SelectHTMLAttributes<HTMLSelectElement>) { const T = useT(); return <select style={{ background: T.inp, border: `1px solid ${T.brd}`, borderRadius: 8, color: T.t1, padding: '.52rem .75rem', width: '100%', fontSize: '16px', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} {...p}>{children}</select>; }
 function CatInp({ value, onChange, categories, placeholder }) {
     const T = useT();
     const choose = c => onChange({ target: { value: c } });
@@ -466,7 +473,7 @@ function CatInp({ value, onChange, categories, placeholder }) {
         </div>}
     </div>;
 }
-function Btn({ onClick, primary, danger, ghost, style: xs, children, disabled = false, ...rest }) {
+function Btn({ onClick, primary, danger, ghost, style: xs, children, disabled = false, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { primary?: boolean; danger?: boolean; ghost?: boolean }) {
     const T = useT(); const [h, setH] = useState(false);
     let bg, col, brd, sh;
     if (primary) { bg = h ? '#F04060' : ACC; col = '#fff'; brd = 'none'; sh = `0 4px 20px ${ACC}50`; }
@@ -542,7 +549,7 @@ function ModalSaisie({ poches, txs, vals, defPoche, onSave, onClose }) {
             <div style={{ display: 'grid', gap: '.85rem' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                     <div><Lbl ch="Poche" /><Sel value={pocheId} onChange={e => { setPocheId(e.target.value); resetBefore(); }}>{poches.map(p => <option key={p.id} value={p.id}>{p.nom}</option>)}</Sel></div>
-                    <div><Lbl ch="Date" /><Inp type="date" value={date} onChange={e => { setDate(e.target.value); resetBefore(); }} /></div>
+                    <div><Lbl ch="Date" /><Inp type="date" value={date} max={localToday()} onChange={e => { setDate(e.target.value); resetBefore(); }} /></div>
                 </div>
                 <div style={{ background: T.s2, borderRadius: 10, padding: '.85rem', border: `1px solid ${T.brd}` }}>
                     <div style={{ fontSize: '.58rem', color: T.t2, textTransform: 'uppercase', letterSpacing: '.1em', fontWeight: 600, marginBottom: '.65rem' }}>Transaction <span style={{ fontWeight: 400, color: T.t3 }}>{withdrawalMode ? '— obligatoire' : '— optionnel'}</span></div>
@@ -646,7 +653,7 @@ function ModalClosePocket({ poche, txs, vals, onSave, onClose }) {
     );
 }
 
-function ModalRepairHistory({ poches, txs, pocheId, transaction, vals, onSave, onReopen, onClose }) {
+function ModalRepairHistory({ poches, txs, pocheId, transaction, vals, onSave, onReopen, onClose, persistenceNotice }) {
     const T = useT();
     const fieldId = useId();
     const [selected, setSelected] = useState(transaction || null);
@@ -671,10 +678,11 @@ function ModalRepairHistory({ poches, txs, pocheId, transaction, vals, onSave, o
         if (!canSave) return;
         const error = onSave(selected, Number(value));
         if (error) { setSaveError(error); return; }
-        back(); setNotice('Valeur historique enregistrée.');
+        back(); setNotice('Valeur historique complétée.');
     };
     return <Sheet title="Compléter l’historique" onClose={onClose}>
         <div role="dialog" aria-modal="true" aria-label="Compléter l’historique" style={{ display: 'grid', gap: 14, minWidth: 0, overflowWrap: 'anywhere' }}>
+            {persistenceNotice}
             {selected ? <>
                 <div style={{ display: 'grid', gap: 5 }}>
                     <strong style={{ color: T.t1, fontSize: '.85rem' }}>{selectedPocket?.nom || 'Poche'}</strong>
@@ -695,7 +703,7 @@ function ModalRepairHistory({ poches, txs, pocheId, transaction, vals, onSave, o
                     {!selectedPocket?.closedAt && <Btn primary disabled={!canSave} onClick={save}><Check size={13} />Enregistrer</Btn>}
                 </div>
             </> : <>
-                {notice && <div role="status" style={{ color: GRN, fontSize: '.76rem', display: 'flex', alignItems: 'center', gap: 6 }}><Check size={14} />{notice}</div>}
+                {notice && !persistenceNotice && <div role="status" style={{ color: GRN, fontSize: '.76rem', display: 'flex', alignItems: 'center', gap: 6 }}><Check size={14} />{notice}</div>}
                 <div style={{ color: T.t2, fontSize: '.76rem' }}>{pendingCount ? `${pendingCount} retrait(s) sans valeur avant retrait` : 'Tous les retraits sont complets.'}</div>
                 {groups.map(({ pocket, entries }) => <section key={pocket.id} aria-label={pocket.nom || 'Poche'} style={{ minWidth: 0 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', paddingBottom: 8, borderBottom: `1px solid ${T.brd}` }}>
@@ -1150,7 +1158,7 @@ function TxTimeline({ txs, onDel, onRepair }) {
     );
 }
 
-function AllocationChart({ pm }) {
+function AllocationChart({ pm }: { pm: Array<Pocket & PocketMetrics> }) {
     const T = useT(); const { isMobile } = useBreakpoint();
     const [mode, setMode] = useState('poche');
     const categories = useMemo(() => [...new Set(pm.filter(p => !p.closedAt && p.valActu > 0).map(p => p.categorie?.trim() || 'Sans catégorie'))], [pm]);
@@ -1160,7 +1168,7 @@ function AllocationChart({ pm }) {
     const data = useMemo(() => {
         const active = pm.filter(p => !p.closedAt && p.valActu > 0);
         if (mode === 'categorie') {
-            return Object.values(active.reduce((acc, p) => {
+            return Object.values(active.reduce<Record<string, { name: string; value: number; fill: string }>>((acc, p) => {
                 const name = p.categorie?.trim() || 'Sans catégorie';
                 const prev = acc[name] || { name, value: 0, fill: catColor(name) };
                 return { ...acc, [name]: { ...prev, value: prev.value + p.valActu } };
@@ -1171,8 +1179,8 @@ function AllocationChart({ pm }) {
     }, [cat, mode, pm]);
     const total = data.reduce((s, d) => s + d.value, 0);
     const pct = v => total > 0 ? `${((v / total) * 100).toFixed(1)} %` : '0.0 %';
-    const TT = { contentStyle: { background: T.dark ? T.s2 : '#fff', border: `1px solid ${T.brd}`, borderRadius: 8, color: T.t1, fontSize: '.73rem', boxShadow: T.dark ? '0 12px 32px rgba(0,0,0,.45)' : '0 12px 32px rgba(0,0,0,.12)' }, itemStyle: { color: T.t1 }, labelStyle: { color: T.t1 }, formatter: v => [`${fEUR(v)} (${pct(v)})`] };
-    const pieLabel = ({ cx, cy, midAngle, outerRadius, percent, name }) => {
+    const TT = { contentStyle: { background: T.dark ? T.s2 : '#fff', border: `1px solid ${T.brd}`, borderRadius: 8, color: T.t1, fontSize: '.73rem', boxShadow: T.dark ? '0 12px 32px rgba(0,0,0,.45)' : '0 12px 32px rgba(0,0,0,.12)' }, itemStyle: { color: T.t1 }, labelStyle: { color: T.t1 }, formatter: v => `${fEUR(Number(v))} (${pct(Number(v))})` };
+    const pieLabel = ({ cx, cy, midAngle = 0, outerRadius, percent = 0, name }: PieLabelRenderProps) => {
         if (percent < .08) return null;
         const rad = Math.PI / 180, r = outerRadius + 18, x = cx + r * Math.cos(-midAngle * rad), y = cy + r * Math.sin(-midAngle * rad);
         return <text x={x} y={y} fill={T.t1} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" style={{ fontSize: 11, fontWeight: 700, textShadow: T.dark ? '0 1px 5px #000' : 'none' }}>{name}</text>;
@@ -1192,7 +1200,7 @@ function AllocationChart({ pm }) {
                                 {data.map((e, i) => <Cell key={i} fill={e.fill} />)}
                             </Pie>
                             <RT {...TT} />
-                            <Legend verticalAlign="bottom" iconType="circle" iconSize={7} wrapperStyle={{ color: T.t1 }} formatter={(v, entry) => <span style={{ color: T.t1, fontSize: '.72rem', fontWeight: 600 }}>{v} <span style={{ color: T.t2, fontWeight: 500 }}>{pct(entry?.payload?.value || 0)}</span></span>} />
+                            <Legend verticalAlign="bottom" iconType="circle" iconSize={7} wrapperStyle={{ color: T.t1 }} formatter={(v, entry) => <span style={{ color: T.t1, fontSize: '.72rem', fontWeight: 600 }}>{v} <span style={{ color: T.t2, fontWeight: 500 }}>{pct(Number(entry.payload && 'value' in entry.payload ? entry.payload.value : 0))}</span></span>} />
                         </PieChart>
                     </ResponsiveContainer>
                 ) : <div style={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.t2, fontSize: '.76rem' }}>Aucune valorisation</div>}
@@ -1379,7 +1387,7 @@ function Dashboard({ pm, gm, ts, vs, ps, setSelP, setModal, dataMode, impJSON, s
         });
     }, [pm, sort]);
     const sortBy = key => setSort(s => ({ key, dir: s.key === key && s.dir === 'desc' ? 'asc' : 'desc' }));
-    const H = ({ k, right, children }) => {
+    const H = ({ k, right = false, children }) => {
         const active = sort.key === k;
         return <th style={right ? thR : th}><span onClick={() => sortBy(k)} role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') sortBy(k); }} style={{ background: 'none', border: 'none', padding: 0, margin: 0, color: active ? T.t1 : T.t2, cursor: 'pointer', font: 'inherit', textTransform: 'inherit', letterSpacing: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 4, justifyContent: right ? 'flex-end' : 'flex-start', width: '100%', minHeight: 30 }}>{children}<span style={{ fontSize: '.55rem', color: active ? ACC : T.t3 }}>{active ? (sort.dir === 'desc' ? '↓' : '↑') : '↕'}</span></span></th>;
     };
@@ -1456,7 +1464,7 @@ function PochesPage({ pm, vs, ts, gm, setSelP, setModal }) {
                 {pm.length > 0 && sections.map(section => <section key={section.label}>
                     <h3 style={{ color: T.t1, fontSize: '.85rem', margin: '0 0 .7rem', paddingBottom: 8, borderBottom: `1px solid ${T.brd}` }}>{section.label} ({section.pockets.length})</h3>
                     {!section.pockets.length && <p style={{ color: T.t2, fontSize: '.75rem' }}>Aucune poche {section.label === 'Actives' ? 'active' : 'clôturée'}.</p>}
-                    {[...new Set(section.pockets.map(p => p.categorie?.trim() || 'Sans catégorie'))].map(cat => <div key={cat} style={{ marginBottom: 14 }}>
+                    {[...new Set<string>(section.pockets.map(p => p.categorie?.trim() || 'Sans catégorie'))].map(cat => <div key={cat} style={{ marginBottom: 14 }}>
                         <div style={{ fontSize: '.62rem', color: T.t2, textTransform: 'uppercase', letterSpacing: '.12em', fontWeight: 700, marginBottom: '.55rem' }}>{cat}</div>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(220px,100%),1fr))', gap: '.75rem' }}>
                             {section.pockets.filter(p => (p.categorie?.trim() || 'Sans catégorie') === cat).map(p => <PocheCard key={p.id} p={p} vals={vs} txs={ts} total={gm.tv} onClick={() => setSelP(p.id)} />)}
@@ -1469,14 +1477,14 @@ function PochesPage({ pm, vs, ts, gm, setSelP, setModal }) {
     );
 }
 
-function ExportReminder({ show, onExport }) {
+function ExportReminder({ show, onExport, saved }) {
     const T = useT();
     if (!show) return null;
     return (
         <div style={{ border: `1px solid ${AMB}40`, background: T.dark ? `${AMB}12` : `${AMB}0D`, borderRadius: 12, padding: '.65rem .8rem', marginBottom: '.85rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: T.t2, fontSize: '.76rem', lineHeight: 1.45 }}>
                 <Download size={15} color={AMB} />
-                <span><strong style={{ color: T.t1 }}>Changement enregistré localement.</strong> Exportez vos données pour garder un fichier de sauvegarde à jour.</span>
+                <span><strong style={{ color: T.t1 }}>{saved ? 'Changement enregistré localement.' : 'Modifications non enregistrées localement.'}</strong> Exportez vos données pour garder un fichier de sauvegarde à jour.</span>
             </div>
             <Btn ghost onClick={onExport} style={{ borderColor: `${AMB}45`, color: AMB, background: `${AMB}10` }}><Download size={12} />Exporter maintenant</Btn>
         </div>
@@ -1731,7 +1739,7 @@ function SimulationPage({ config, onChange, onReset, portfolio = [] }: { config:
         change({ ...draft, pockets: [...draft.pockets, pocket] });
         setOpenPocket(pocket.id);
     };
-    const startManual = () => { setParametersOpen(true); setOpenPocket(draft.pockets[0].id); setTimeout(() => document.getElementById(`simulation-pocket-${draft.pockets[0].id}`)?.querySelector('input[inputmode]')?.focus(), 50); };
+    const startManual = () => { setParametersOpen(true); setOpenPocket(draft.pockets[0].id); setTimeout(() => document.getElementById(`simulation-pocket-${draft.pockets[0].id}`)?.querySelector<HTMLInputElement>('input[inputmode]')?.focus(), 50); };
     const matchedCrisis = (Object.keys(CRISIS_PRESETS) as (keyof typeof CRISIS_PRESETS)[]).find(name => (['volatility', 'crisisProbability', 'crisisLossMin', 'crisisLossMax'] as const).every(field => sameRate(CRISIS_PRESETS[name][field], draft.options[field])));
     const crisisMode = !draft.stochastic ? 'none' : customCrisis || !matchedCrisis ? 'custom' : matchedCrisis;
     const setCrisisMode = (mode: string) => {
@@ -1886,14 +1894,19 @@ export default function App() {
     const [mode, setMode] = useState('dark');
     const [page, setPage] = useState('dashboard');
     const [selP, setSelP] = useState(null);
-    const [ps, setPs] = useState([]);
-    const [ts, setTs] = useState([]);
-    const [vs, setVs] = useState([]);
+    const [ps, setPs] = useState<Pocket[]>([]);
+    const [ts, setTs] = useState<Transaction[]>([]);
+    const [vs, setVs] = useState<Valuation[]>([]);
     const [simulation, setSimulation] = useState<SimulationConfig>(createSimulationConfig);
     const [simulationRevision, setSimulationRevision] = useState(0);
     const [simulationNotice, setSimulationNotice] = useState('');
     const [ready, setReady] = useState(false);
     const [loadError, setLoadError] = useState('');
+    const [persistence] = useState(() => createPortfolioPersistence(window.storage));
+    const [saveStatus, setSaveStatus] = useState<'saving' | 'saved' | 'error' | 'conflict'>('saving');
+    const [saveError, setSaveError] = useState('');
+    const [saveAttempt, setSaveAttempt] = useState(0);
+    const externalChange = useRef(false);
     const rawBackup = useRef('');
     const [dataMode, setDataMode] = useState('empty');
     const [showWelcome, setShowWelcome] = useState(false);
@@ -1902,10 +1915,17 @@ export default function App() {
     const T = useMemo(() => mode === 'dark' ? createDarkTheme() : createLightTheme(), [mode]);
     const { isMobile } = useBreakpoint();
 
+    const reportSaveError = (error: unknown) => {
+        const conflict = error instanceof StorageConflictError;
+        if (conflict) externalChange.current = true;
+        setSaveStatus(conflict ? 'conflict' : 'error');
+        setSaveError(conflict ? error.message : 'La sauvegarde locale a échoué. Vos modifications restent à l’écran mais ne sont pas enregistrées. Exportez-les avant de quitter.');
+    };
+
     useEffect(() => {
         (async () => {
             try {
-                const r = await window.storage.get('inv_v9');
+                const r = await persistence.read();
                 if (r) {
                     rawBackup.current = r.value;
                     const d = JSON.parse(r.value);
@@ -1924,7 +1944,26 @@ export default function App() {
             setReady(true);
         })();
     }, []);
-    useEffect(() => { if (!ready || loadError || showWelcome || dataMode === 'demo') return; window.storage.set('inv_v9', JSON.stringify({ p: ps, t: ts, v: vs, s: simulation, source: dataMode === 'file' ? 'file' : 'saved' })).catch(() => { }); }, [ps, ts, vs, simulation, ready, loadError, showWelcome, dataMode]);
+    useEffect(() => {
+        if (!ready || loadError || showWelcome || dataMode === 'demo' || externalChange.current) return;
+        let active = true;
+        setSaveStatus('saving');
+        persistence.save(JSON.stringify({ p: ps, t: ts, v: vs, s: simulation, source: dataMode === 'file' ? 'file' : 'saved' }))
+            .then(() => { if (active && !externalChange.current) { setSaveStatus('saved'); setSaveError(''); } })
+            .catch(error => { if (active) reportSaveError(error); });
+        return () => { active = false; };
+    }, [ps, ts, vs, simulation, ready, loadError, showWelcome, dataMode, saveAttempt]);
+    useEffect(() => {
+        const onStorage = (event: StorageEvent) => {
+            if (event.key !== PORTFOLIO_STORAGE_KEY && event.key !== null) return;
+            if (event.storageArea && event.storageArea !== window.localStorage) return;
+            window.storage.get(PORTFOLIO_STORAGE_KEY).then(current => {
+                if (persistence.hasExternalChange(current?.value ?? null)) reportSaveError(new StorageConflictError());
+            }).catch(reportSaveError);
+        };
+        window.addEventListener('storage', onStorage);
+        return () => window.removeEventListener('storage', onStorage);
+    }, [persistence]);
 
     const pm = useMemo(() => ps.map(p => ({ ...p, ...getPocketMetrics(p.id, ts, vs, p.closedAt) })), [ps, ts, vs]);
     const categories = useMemo(() => [...new Set(ps.map(p => p.categorie?.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr-FR')), [ps]);
@@ -1935,9 +1974,9 @@ export default function App() {
     const useDemoAsBase = () => { setDataMode('saved'); setNeedsExport(true); setShowWelcome(false); };
     const disconnectFile = async () => {
         try {
-            if (window.storage.remove) await window.storage.remove('inv_v9');
-            else window.localStorage?.removeItem('inv_v9');
-        } catch { }
+            await persistence.remove();
+        } catch (error) { reportSaveError(error); return; }
+        setSaveStatus('saved'); setSaveError('');
         setPs([]); setTs([]); setVs([]); setDataMode('empty'); setNeedsExport(false); setShowWelcome(true); setSelP(null); setPage('dashboard'); setModal(null);
     };
 
@@ -2007,7 +2046,9 @@ export default function App() {
         const r = new FileReader();
         r.onload = ev => {
             try {
-                const d = JSON.parse(ev.target.result);
+                const result = ev.target?.result;
+                if (typeof result !== 'string') throw new Error('Lecture du fichier impossible.');
+                const d = JSON.parse(result);
                 const importedSimulation = d.simulation !== undefined ? readSimulationConfig(d.simulation) : undefined;
                 const portfolio = readPortfolioData(d);
                 if (!portfolio && !importedSimulation) throw new Error('Format non reconnu');
@@ -2019,11 +2060,21 @@ export default function App() {
         r.readAsText(f); e.target.value = '';
     };
 
+    const saveWarning = saveError && <div role="alert" style={{ display: 'grid', gap: 10, padding: 12, marginBottom: 12, color: AMB, background: T.s1, border: `1px solid ${AMB}60`, borderRadius: 8 }}>
+        <strong>{saveStatus === 'conflict' ? 'Conflit de sauvegarde' : 'Sauvegarde locale impossible'}</strong>
+        <span>{saveError}</span>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Btn ghost onClick={expJSON}><Download size={14} />Exporter mes modifications</Btn>
+            {saveStatus === 'conflict'
+                ? <Btn ghost onClick={() => { if (!needsExport || window.confirm('Recharger les données enregistrées ? Les modifications non exportées de cet onglet seront perdues.')) window.location.reload(); }}><RotateCcw size={14} />Recharger les données</Btn>
+                : <Btn ghost onClick={() => setSaveAttempt(attempt => attempt + 1)}><RotateCcw size={14} />Réessayer la sauvegarde</Btn>}
+        </div>
+    </div>;
     const detailPoche = selP ? ps.find(p => p.id === selP) : null;
     const renderModal = () => {
         if (!modal) return null;
         if (modal.type === 'saisie') return <ModalSaisie poches={ps.filter(p => !p.closedAt)} txs={ts} vals={vs} defPoche={modal.poche} onSave={handleSaisie} onClose={() => setModal(null)} />;
-        if (modal.type === 'repairHistory') return <ModalRepairHistory poches={ps} txs={ts} vals={vs} pocheId={modal.poche} transaction={modal.transaction} onSave={handleCompleteWithdrawal} onReopen={poche => setModal({ type: 'reopen', poche, repairHistory: true, repairPocket: modal.poche })} onClose={() => setModal(null)} />;
+        if (modal.type === 'repairHistory') return <ModalRepairHistory poches={ps} txs={ts} vals={vs} pocheId={modal.poche} transaction={modal.transaction} onSave={handleCompleteWithdrawal} onReopen={poche => setModal({ type: 'reopen', poche, repairHistory: true, repairPocket: modal.poche })} onClose={() => setModal(null)} persistenceNotice={saveWarning} />;
         if (modal.type === 'closePocket') return <ModalClosePocket poche={modal.poche} txs={ts} vals={vs} onSave={(id, date) => { if (updateP(id, { closedAt: date })) setModal(null); }} onClose={() => setModal(null)} />;
         if (modal.type === 'reopen') return <ConfirmDel title="Rouvrir la poche" msg={`Rouvrir « ${modal.poche.nom} » ? Les transactions et valorisations existantes seront conservées.`} okLabel="Rouvrir" danger={false} onOk={() => { if (updateP(modal.poche.id, { closedAt: undefined })) setModal(modal.repairHistory ? { type: 'repairHistory', poche: modal.repairPocket } : null); }} onCancel={() => setModal(modal.repairHistory ? { type: 'repairHistory', poche: modal.repairPocket } : null)} />;
         if (modal.type === 'p') return <ModalPoche onAdd={addP} onClose={() => setModal(null)} count={ps.length} categories={categories} />;
@@ -2052,7 +2103,8 @@ export default function App() {
             <div style={{ minHeight: '100vh', background: appBg, color: T.t1, fontFamily: 'system-ui,-apple-system,sans-serif', fontSize: '13px', lineHeight: 1.5 }}>
                 <TopBar page={page} selP={selP} setPage={setPage} setSelP={setSelP} mode={mode} setMode={setMode} setModal={setModal} expJSON={expJSON} impJSON={impJSON} dataMode={dataMode} disconnectFile={() => setModal({ type: 'disconnect' })} onHome={() => { setSelP(null); setShowWelcome(true); }} />
                 <main style={{ maxWidth: 1240, margin: '0 auto', padding: `1.1rem 1rem ${mainPb}` }}>
-                    <ExportReminder show={needsExport && !showWelcome} onExport={expJSON} />
+                    {modal?.type !== 'repairHistory' && saveWarning}
+                    <ExportReminder show={needsExport && !showWelcome} onExport={expJSON} saved={saveStatus === 'saved'} />
                     {simulationNotice && <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 10, marginBottom: 12, color: AMB, background: T.s1, border: `1px solid ${T.brd}`, borderRadius: 8 }}>{simulationNotice}<Btn ghost aria-label="Fermer l’avertissement" onClick={() => setSimulationNotice('')} style={{ padding: 6 }}><X size={13} /></Btn></div>}
                     {detailPoche
                         ? <PocheDetail poche={detailPoche} txs={ts} vals={vs} onBack={() => setSelP(null)} onDelTx={delTx} onDelVal={delV} onDelPoche={delP} setModal={setModal} />

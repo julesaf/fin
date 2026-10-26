@@ -81,6 +81,24 @@ describe('withdrawal valuation', () => {
 });
 
 describe('financial consistency', () => {
+    it('uses a common terminal date for all holdings in the portfolio XIRR', () => {
+        const pockets = [{ id: 'a' }, { id: 'b' }];
+        const flows: Transaction[] = pockets.map(pocket => ({ pocheId: pocket.id, type: 'apport', montant: 100, timestamp: '2023-01-01' }));
+        const values = [{ pocheId: 'a', valeur: 120, date: '2024-01-01' }, { pocheId: 'b', valeur: 100, date: '2025-01-01' }];
+        const expected = calculateXirr([{ date: '2023-01-01', amount: -200 }, { date: '2025-01-01', amount: 220 }]);
+        expect(getPortfolioMetrics(pockets, flows, values).xirr).toBeCloseTo(expected!, 10);
+    });
+
+    it('rejects future contributions, withdrawals and valuations at every write boundary', () => {
+        const pockets = [{ id: 'pea' }];
+        const futureFlow: Transaction = { pocheId: 'pea', type: 'apport', montant: 100, timestamp: '2999-01-01' };
+        expect(() => prepareContribution('pea', 100, futureFlow.timestamp, [])).toThrow(/future/);
+        expect(() => prepareWithdrawal('pea', 100, futureFlow.timestamp, [], 100)).toThrow(/future/);
+        expect(() => validatePortfolio(pockets, [futureFlow], [])).toThrow(/future/);
+        expect(() => validatePortfolio(pockets, [], [{ pocheId: 'pea', valeur: 100, date: futureFlow.timestamp }])).toThrow(/future/);
+        expect(() => readPortfolioData({ p: pockets, t: [futureFlow], v: [] })).toThrow(/future/);
+    });
+
     it('adds a contribution to the market value rather than manufacturing a loss', () => {
         const values: Valuation[] = [{ pocheId: 'pea', valeur: 9800, date: '2025-01-01' }];
         expect(prepareContribution('pea', 1000, '2025-02-01', values)).toEqual({ valueBefore: 9800, valueAfter: 10800 });
@@ -176,6 +194,17 @@ describe('withdrawal history repair', () => {
         { pocheId: 'pea', type: 'retrait', montant: 60, timestamp: '2025-06-01', commentaire: 'Ancien retrait' },
     ];
     const values: Valuation[] = [{ pocheId: 'pea', valeur: 60, date: '2025-06-01' }];
+
+    it('uses the completed value when no later observation supersedes it', () => {
+        const oldValues = [{ pocheId: 'pea', valeur: 100, date: '2025-01-01' }];
+        const snapshot = JSON.stringify(oldValues);
+        const next = completeWithdrawalValue(pockets, flows, oldValues, flows[1], 120);
+        expect(getPocketMetrics('pea', next, oldValues)).toMatchObject({ valActu: 60, gainTotal: 20, gainLatent: 10, gainRealise: 10 });
+        expect(buildPocketHistory('pea', next, oldValues).at(-1)).toMatchObject({ v: 60, p: 20 });
+        expect(getAnnualPerformanceRows('pea', next, oldValues).at(-1)).toMatchObject({ emv: 60, perfE: 20 });
+        expect(prepareWithdrawal('pea', 10, '2025-07-01', oldValues, undefined, next)).toEqual({ valueBefore: 60, valueAfter: 50 });
+        expect(JSON.stringify(oldValues)).toBe(snapshot);
+    });
 
     it('restores latent and realized returns without rewriting financial history', () => {
         const snapshot = JSON.stringify({ pockets, flows, values });

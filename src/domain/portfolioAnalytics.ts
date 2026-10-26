@@ -134,9 +134,13 @@ export function localToday(): string {
 export function getPocketValueAtDate(pocketId: string, transactions: Transaction[], valuations: Valuation[], date: string): number {
     const latest = lastItem(getPocketValuations(pocketId, valuations).filter(valuation => valuation.date <= date));
     const pending = getPocketTransactions(pocketId, transactions).filter(transaction => transaction.timestamp <= date
-        && (!latest || transaction.timestamp > latest.date));
-    const adjustment = sumTransactions(pending, 'apport') - sumTransactions(pending, 'retrait');
-    return Math.max(0, Math.round(((latest?.valeur ?? 0) + adjustment) * 100) / 100);
+        && (!latest || transaction.timestamp > latest.date)).sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+    let valueCents = Math.round((latest?.valeur ?? 0) * 100);
+    for (const transaction of pending) {
+        if (transaction.valeurAvant !== undefined) valueCents = Math.round(transaction.valeurAvant * 100);
+        valueCents += (transaction.type === 'apport' ? 1 : -1) * Math.round(transaction.montant * 100);
+    }
+    return Math.max(0, valueCents / 100);
 }
 
 export function assertHistoryEditable(pocketId: string, date: string, valuations: Valuation[], sourceIndex = Infinity): void {
@@ -151,6 +155,7 @@ export function prepareContribution(
 ): { valueBefore: number; valueAfter: number } {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date))
         || new Date(date).toISOString().slice(0, 10) !== date) throw new Error('Choisissez une date d’apport valide.');
+    if (date > localToday()) throw new Error('La date d’apport ne peut pas être future.');
     assertHistoryEditable(pocketId, date, valuations);
     if (!Number.isFinite(amount) || Math.round(amount * 100) <= 0) throw new Error('Le montant de l’apport doit être strictement positif.');
     const amountCents = Math.round(amount * 100);
@@ -166,6 +171,7 @@ export function prepareWithdrawal(
         || new Date(date).toISOString().slice(0, 10) !== date) {
         throw new Error('Choisissez une date de retrait valide.');
     }
+    if (date > localToday()) throw new Error('La date de retrait ne peut pas être future.');
     assertHistoryEditable(pocketId, date, valuations);
     const latest = lastItem(getPocketValuations(pocketId, valuations).filter(valuation => valuation.date <= date));
     const valueBefore = updatedValue ?? (latest || transactions.some(transaction => transaction.pocheId === pocketId && transaction.timestamp <= date)
@@ -234,6 +240,7 @@ export function validatePortfolio(pockets: unknown, transactions: unknown, valua
     const money = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
         && value >= 0 && value <= Number.MAX_SAFE_INTEGER / 100;
     if (!Array.isArray(pockets) || !Array.isArray(transactions) || !Array.isArray(valuations)) throw new Error('Les poches, transactions et valorisations doivent être des listes.');
+    const today = localToday();
     const pocketIds = new Set<string>();
     for (const pocket of pockets) {
         if (!record(pocket) || !validId(pocket.id) || pocketIds.has(pocket.id)) throw new Error('Identifiant de poche absent ou dupliqué.');
@@ -246,6 +253,7 @@ export function validatePortfolio(pockets: unknown, transactions: unknown, valua
         if (!record(transaction) || !validId(transaction.pocheId) || !pocketIds.has(transaction.pocheId)) throw new Error('Une transaction référence une poche inexistante.');
         if (!['apport', 'retrait'].includes(transaction.type as string) || !money(transaction.montant) || Math.round(transaction.montant * 100) <= 0
             || !validDate(transaction.timestamp)) throw new Error('Type, montant ou date de transaction invalide.');
+        if (transaction.timestamp > today) throw new Error('La date de transaction ne peut pas être future.');
         if (transaction.id !== undefined) {
             if (!validId(transaction.id) || transactionIds.has(transaction.id)) throw new Error('Identifiant de transaction invalide ou dupliqué.');
             transactionIds.add(transaction.id);
@@ -258,6 +266,7 @@ export function validatePortfolio(pockets: unknown, transactions: unknown, valua
     for (const valuation of valuations) {
         if (!record(valuation) || !validId(valuation.pocheId) || !pocketIds.has(valuation.pocheId)) throw new Error('Une valorisation référence une poche inexistante.');
         if (!money(valuation.valeur) || !validDate(valuation.date)) throw new Error('Montant ou date de valorisation invalide.');
+        if (valuation.date > today) throw new Error('La date de valorisation ne peut pas être future.');
         if (valuation.id !== undefined) {
             if (!validId(valuation.id) || valuationIds.has(valuation.id)) throw new Error('Identifiant de valorisation invalide ou dupliqué.');
             valuationIds.add(valuation.id);
@@ -539,10 +548,11 @@ export function getPortfolioMetrics(
         : pocketMetrics.reduce((sum, pocket) => sum + pocket.gainNonRealise!, 0);
 
     const pocketIds = new Set(pockets.map(pocket => pocket.id));
-    const xirrCashFlows = toXirrCashFlows(transactions.filter(transaction => pocketIds.has(transaction.pocheId)));
+    const scopedTransactions = transactions.filter(transaction => pocketIds.has(transaction.pocheId));
+    const xirrCashFlows = toXirrCashFlows(scopedTransactions);
+    const endDate = [...valuations.filter(valuation => pocketIds.has(valuation.pocheId)).map(valuation => valuation.date),
+    ...scopedTransactions.map(transaction => transaction.timestamp)].sort().pop();
     for (const pocket of pockets) {
-        const endDate = [...getPocketValuations(pocket.id, valuations).map(valuation => valuation.date),
-        ...getPocketTransactions(pocket.id, transactions).map(transaction => transaction.timestamp)].sort().pop();
         const value = endDate ? getPocketValueAtDate(pocket.id, transactions, valuations, endDate) : 0;
         if (endDate && value > 0) {
             xirrCashFlows.push({ date: endDate, amount: value });
