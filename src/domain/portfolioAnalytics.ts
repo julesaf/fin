@@ -210,6 +210,22 @@ export function assertPocketWritable(pockets: Pocket[], pocketId: string): void 
     if (pocket.closedAt !== undefined) throw new Error('Rouvrez la poche avant de modifier ses opérations.');
 }
 
+export function completeWithdrawalValue(
+    pockets: Pocket[], transactions: Transaction[], valuations: Valuation[], transaction: Transaction, valueBefore: number,
+): Transaction[] {
+    const index = transactions.indexOf(transaction);
+    if (index < 0) throw new Error('Cette transaction a changé. Fermez puis rouvrez la correction.');
+    assertPocketWritable(pockets, transaction.pocheId);
+    if (transaction.type !== 'retrait' || transaction.valeurAvant !== undefined) throw new Error('Seul un retrait sans valeur avant retrait peut être complété.');
+    if (!Number.isFinite(valueBefore) || valueBefore <= 0 || valueBefore > Number.MAX_SAFE_INTEGER / 100
+        || Math.round(valueBefore * 100) < Math.round(transaction.montant * 100)) {
+        throw new Error('La valeur avant retrait doit être au moins égale au montant retiré.');
+    }
+    const next = transactions.map((entry, entryIndex) => entryIndex === index ? { ...entry, valeurAvant: Math.round(valueBefore * 100) / 100 } : entry);
+    validatePortfolio(pockets, next, valuations);
+    return next;
+}
+
 export function validatePortfolio(pockets: unknown, transactions: unknown, valuations: unknown): void {
     const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
     const validDate = (value: unknown): value is string => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)

@@ -26,6 +26,7 @@ import {
     buildPocketHistory,
     buildPortfolioHistory,
     calculatePerformanceAtDate,
+    completeWithdrawalValue,
     getAnnualPerformanceRows,
     getPocketMetrics,
     getPortfolioMetrics,
@@ -645,6 +646,74 @@ function ModalClosePocket({ poche, txs, vals, onSave, onClose }) {
     );
 }
 
+function ModalRepairHistory({ poches, txs, pocheId, transaction, vals, onSave, onReopen, onClose }) {
+    const T = useT();
+    const fieldId = useId();
+    const [selected, setSelected] = useState(transaction || null);
+    const [value, setValue] = useState('');
+    const [saveError, setSaveError] = useState('');
+    const [notice, setNotice] = useState('');
+    const groups = poches.filter(pocket => !pocheId || pocket.id === pocheId).map(pocket => ({
+        pocket,
+        entries: txs.map((entry, index) => ({ entry, index })).filter(({ entry }) => entry.pocheId === pocket.id && entry.type === 'retrait' && entry.valeurAvant === undefined)
+            .sort((a, b) => a.entry.timestamp.localeCompare(b.entry.timestamp)),
+    })).filter(group => group.entries.length > 0);
+    const pendingCount = groups.reduce((count, group) => count + group.entries.length, 0);
+    const selectedPocket = selected ? poches.find(pocket => pocket.id === selected.pocheId) : null;
+    let valueError = '';
+    if (selected && value !== '') {
+        try { completeWithdrawalValue(poches, txs, vals, selected, Number(value)); }
+        catch (err) { valueError = err.message; }
+    }
+    const canSave = !!selected && !!selectedPocket && !selectedPocket.closedAt && value !== '' && !valueError;
+    const back = () => { setSelected(null); setValue(''); setSaveError(''); };
+    const save = () => {
+        if (!canSave) return;
+        const error = onSave(selected, Number(value));
+        if (error) { setSaveError(error); return; }
+        back(); setNotice('Valeur historique enregistrée.');
+    };
+    return <Sheet title="Compléter l’historique" onClose={onClose}>
+        <div role="dialog" aria-modal="true" aria-label="Compléter l’historique" style={{ display: 'grid', gap: 14, minWidth: 0, overflowWrap: 'anywhere' }}>
+            {selected ? <>
+                <div style={{ display: 'grid', gap: 5 }}>
+                    <strong style={{ color: T.t1, fontSize: '.85rem' }}>{selectedPocket?.nom || 'Poche'}</strong>
+                    <div style={{ color: T.t2, fontSize: '.77rem' }}>Retrait du {fDt(selected.timestamp)} · {fEUR(selected.montant)}</div>
+                    {selected.commentaire && <div style={{ color: T.t3, fontSize: '.72rem' }}>{selected.commentaire}</div>}
+                </div>
+                {selectedPocket?.closedAt ? <>
+                    <div style={{ color: T.t2, fontSize: '.75rem' }}>Poche clôturée le {fDt(selectedPocket.closedAt)} · Opérations en lecture seule</div>
+                    <Btn ghost onClick={() => onReopen(selectedPocket)}><RotateCcw size={13} />Rouvrir la poche</Btn>
+                </> : <div>
+                    <label htmlFor={fieldId} style={{ fontSize: '.73rem', color: T.t2, display: 'block', marginBottom: 6 }}>Valeur de la poche avant le retrait (€)</label>
+                    <Inp id={fieldId} aria-describedby={`${fieldId}-source${valueError || saveError ? ` ${fieldId}-error` : ''}`} autoFocus type="number" inputMode="decimal" min={selected.montant} step="0.01" value={value} onChange={event => { setValue(event.target.value); setSaveError(''); }} />
+                    <div id={`${fieldId}-source`} style={{ color: T.t3, fontSize: '.68rem', marginTop: 6 }}>Valeur historique figurant sur le relevé, avant ce retrait.</div>
+                </div>}
+                {(valueError || saveError) && <div id={`${fieldId}-error`} role="alert" style={{ color: AMB, fontSize: '.74rem' }}>{valueError || saveError}</div>}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+                    <Btn ghost onClick={back}>Annuler</Btn>
+                    {!selectedPocket?.closedAt && <Btn primary disabled={!canSave} onClick={save}><Check size={13} />Enregistrer</Btn>}
+                </div>
+            </> : <>
+                {notice && <div role="status" style={{ color: GRN, fontSize: '.76rem', display: 'flex', alignItems: 'center', gap: 6 }}><Check size={14} />{notice}</div>}
+                <div style={{ color: T.t2, fontSize: '.76rem' }}>{pendingCount ? `${pendingCount} retrait(s) sans valeur avant retrait` : 'Tous les retraits sont complets.'}</div>
+                {groups.map(({ pocket, entries }) => <section key={pocket.id} aria-label={pocket.nom || 'Poche'} style={{ minWidth: 0 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', paddingBottom: 8, borderBottom: `1px solid ${T.brd}` }}>
+                        <strong style={{ fontSize: '.82rem', color: T.t1 }}>{pocket.nom || 'Poche'}</strong>
+                        {pocket.closedAt && <Btn ghost title="Rouvrir la poche avant correction" onClick={() => onReopen(pocket)}><RotateCcw size={13} />Rouvrir la poche</Btn>}
+                    </div>
+                    {pocket.closedAt && <div style={{ color: T.t3, fontSize: '.7rem', paddingTop: 8 }}>Clôturée le {fDt(pocket.closedAt)} · Lecture seule</div>}
+                    {entries.map(({ entry, index }) => <div key={index} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', alignItems: 'center', gap: 8, padding: '10px 0', borderBottom: `1px solid ${T.brd}` }}>
+                        <div style={{ minWidth: 0 }}><div style={{ fontSize: '.75rem', color: T.t1 }}>{fDt(entry.timestamp)} · {fEUR(entry.montant)}</div>{entry.commentaire && <div style={{ fontSize: '.68rem', color: T.t3, marginTop: 3 }}>{entry.commentaire}</div>}</div>
+                        <Btn ghost disabled={!!pocket.closedAt} aria-label={`Compléter le retrait du ${fDt(entry.timestamp)} de ${pocket.nom || 'la poche'} (${index + 1})`} onClick={() => { setSelected(entry); setValue(''); setSaveError(''); setNotice(''); }}><Pencil size={12} />Compléter</Btn>
+                    </div>)}
+                </section>)}
+            </>}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: `1px solid ${T.brd}`, paddingTop: 10 }}><Btn ghost onClick={onClose}>Fermer</Btn></div>
+        </div>
+    </Sheet>;
+}
+
 function ConfirmDel({ msg, onOk, onCancel, title = 'Confirmer', okLabel = 'Supprimer', danger = true }) {
     return (
         <Sheet title={title} onClose={onCancel}>
@@ -938,7 +1007,7 @@ function TopBar({ page, selP, setPage, setSelP, mode, setMode, setModal, expJSON
 }
 
 // ── Hero banner ──
-function HeroBanner({ gm, ps, vs, ts }) {
+function HeroBanner({ gm, ps, vs, ts, onRepairHistory }) {
     const T = useT(); const { isMobile } = useBreakpoint();
     const [chartMode, setChartMode] = useState('value');
     const gainPct = gm.tc > 0 ? gm.tg / gm.tc : null;
@@ -972,6 +1041,7 @@ function HeroBanner({ gm, ps, vs, ts }) {
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '.24rem .6rem', borderRadius: 6, background: T.s2, border: `1px solid ${T.brd}` }}>
                             <span style={{ fontSize: '.6rem', color: T.t3, fontWeight: 500 }}>Latent</span>
                             <span title={gm.latent === null ? 'Valeurs avant retrait manquantes dans l’historique' : 'Gain sur le capital encore détenu, au coût moyen proportionnel'} style={{ fontSize: '.78rem', fontWeight: 700, color: gc(gm.latent), fontVariantNumeric: 'tabular-nums' }}>{gm.latent === null ? 'Indisponible' : fEURS(gm.latent)}</span>
+                            {gm.latent === null && onRepairHistory && <button type="button" title="Compléter les valeurs avant retrait manquantes" onClick={onRepairHistory} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: ACC, padding: '2px 0', minHeight: 28, cursor: 'pointer', fontSize: '.68rem', fontFamily: 'inherit' }}><Pencil size={12} />Corriger</button>}
                         </div>
                     </div>
                     <div style={{ fontSize: '.7rem', color: T.t3 }}>{ps.filter(p => !p.closedAt).length} active(s) · {ps.filter(p => p.closedAt).length} clôturée(s)</div>
@@ -1046,7 +1116,7 @@ function PocheCard({ p, vals, txs, total, onClick }) {
 }
 
 // ── Transaction timeline ──
-function TxTimeline({ txs, onDel }) {
+function TxTimeline({ txs, onDel, onRepair }) {
     const T = useT();
     if (!txs.length) return <div style={{ color: T.t2, textAlign: 'center', padding: '2rem', fontSize: '.8rem' }}>Aucune transaction.</div>;
     return (
@@ -1070,6 +1140,7 @@ function TxTimeline({ txs, onDel }) {
                                 </div>
                                 {t.commentaire && <div style={{ color: T.t2, fontSize: '.67rem', marginTop: 5, lineHeight: 1.45 }}>{t.commentaire}</div>}
                                 {t.valeurAvant !== undefined && <div style={{ color: T.t2, fontSize: '.67rem', marginTop: 5 }}>Valeur avant {t.type === 'retrait' ? 'retrait' : 'apport'} : {fEUR(t.valeurAvant)}</div>}
+                                {t.type === 'retrait' && t.valeurAvant === undefined && onRepair && <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 5 }}><span style={{ color: T.t3, fontSize: '.67rem' }}>Valeur avant retrait manquante</span><Btn ghost onClick={() => onRepair(t)} style={{ padding: '2px 6px', fontSize: '.67rem' }}><Pencil size={11} />Compléter</Btn></div>}
                             </div>
                         </div>
                     );
@@ -1240,7 +1311,7 @@ function PocheDetail({ poche, txs, vals, onBack, onDelTx, onDelVal, onDelPoche, 
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.72rem', color: T.t2, marginBottom: 4 }}><span>{poche.closedAt ? 'Retraits - apports' : 'Valeur - capital'}</span><strong style={{ color: gc(m.gainTotal), fontVariantNumeric: 'tabular-nums' }}>{fEURS(m.gainTotal)}</strong></div>
                             <div title="Coût moyen proportionnel du capital encore détenu, hors calcul fiscal" style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', fontSize: '.72rem', color: T.t2, marginBottom: 4 }}><span>Latent</span><strong style={{ color: gc(m.gainLatent) }}>{m.gainLatent === null ? 'Indisponible' : fEURS(m.gainLatent)}</strong></div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', fontSize: '.72rem', color: T.t2, marginBottom: 4 }}><span>Réalisé</span><strong style={{ color: gc(m.gainRealise) }}>{m.gainRealise === null ? 'Indisponible' : fEURS(m.gainRealise)}</strong></div>
-                            {m.gainLatent === null && <div style={{ fontSize: '.67rem', color: T.t3, marginBottom: 6 }}>Valeurs avant retrait manquantes dans l’historique.</div>}
+                            {m.gainLatent === null && <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}><span style={{ fontSize: '.67rem', color: T.t3 }}>Valeurs avant retrait manquantes dans l’historique.</span><Btn ghost onClick={() => setModal({ type: 'repairHistory', poche: poche.id })} style={{ padding: '2px 6px', fontSize: '.68rem' }}><Pencil size={12} />Corriger</Btn></div>}
                             <div style={{ height: 5, borderRadius: 99, background: T.s3, overflow: 'hidden' }}><div style={{ width: `${Math.min(100, Math.abs(m.gainTotal) / Math.max(Math.abs(m.gainTotal), 1) * 100)}%`, height: '100%', background: poche.couleur, opacity: m.gainTotal >= 0 ? 1 : .55 }} /></div>
                         </SC>
                     </div>
@@ -1251,7 +1322,7 @@ function PocheDetail({ poche, txs, vals, onBack, onDelTx, onDelVal, onDelPoche, 
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '.9rem' }}>
                         {!poche.closedAt && <Btn primary onClick={() => setModal({ type: 'saisie', poche: poche.id })}><Plus size={11} />Ajouter</Btn>}
                     </div>
-                    <TxTimeline txs={pt} onDel={poche.closedAt ? null : id => conf('Supprimer cette transaction ?', () => onDelTx(id))} />
+                    <TxTimeline txs={pt} onDel={poche.closedAt ? null : id => conf('Supprimer cette transaction ?', () => onDelTx(id))} onRepair={transaction => setModal({ type: 'repairHistory', poche: poche.id, transaction })} />
                 </div>
             )}
             {sub === 'valorisations' && (
@@ -1315,7 +1386,7 @@ function Dashboard({ pm, gm, ts, vs, ps, setSelP, setModal, dataMode, impJSON, s
     return (
         <div>
             {dataMode === 'demo' && <DemoBanner onImport={impJSON} onEmpty={startEmpty} onKeep={useDemoAsBase} />}
-            <HeroBanner gm={gm} ps={ps} vs={vs} ts={ts} />
+            <HeroBanner gm={gm} ps={ps} vs={vs} ts={ts} onRepairHistory={dataMode === 'landing' ? undefined : () => setModal({ type: 'repairHistory' })} />
             <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '5fr 3fr', gap: '.75rem', marginBottom: '.75rem' }}>
                 <SC title="Résumé par poche" noPad>
                     <div style={{ padding: '0 1.1rem 1rem', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
@@ -1884,6 +1955,13 @@ export default function App() {
         }
         catch (err) { alert(err.message); return; }
     };
+    const handleCompleteWithdrawal = (transaction, valueBefore) => {
+        try {
+            const next = completeWithdrawalValue(ps, ts, vs, transaction, valueBefore);
+            markPersonal(); setTs(next); return '';
+        }
+        catch (err) { return err.message || 'La correction n’a pas pu être enregistrée.'; }
+    };
     const addP = p => { markPersonal(); setPs(pr => [...pr, { ...p, id: uid(), createdAt: TODAY }]); setModal(null); };
     const delP = id => { markPersonal(); setPs(p => p.filter(x => x.id !== id)); setTs(p => p.filter(t => t.pocheId !== id)); setVs(p => p.filter(v => v.pocheId !== id)); };
     const updateP = (id, patch) => {
@@ -1945,8 +2023,9 @@ export default function App() {
     const renderModal = () => {
         if (!modal) return null;
         if (modal.type === 'saisie') return <ModalSaisie poches={ps.filter(p => !p.closedAt)} txs={ts} vals={vs} defPoche={modal.poche} onSave={handleSaisie} onClose={() => setModal(null)} />;
+        if (modal.type === 'repairHistory') return <ModalRepairHistory poches={ps} txs={ts} vals={vs} pocheId={modal.poche} transaction={modal.transaction} onSave={handleCompleteWithdrawal} onReopen={poche => setModal({ type: 'reopen', poche, repairHistory: true, repairPocket: modal.poche })} onClose={() => setModal(null)} />;
         if (modal.type === 'closePocket') return <ModalClosePocket poche={modal.poche} txs={ts} vals={vs} onSave={(id, date) => { if (updateP(id, { closedAt: date })) setModal(null); }} onClose={() => setModal(null)} />;
-        if (modal.type === 'reopen') return <ConfirmDel title="Rouvrir la poche" msg={`Rouvrir « ${modal.poche.nom} » ? Les transactions et valorisations existantes seront conservées.`} okLabel="Rouvrir" danger={false} onOk={() => { if (updateP(modal.poche.id, { closedAt: undefined })) setModal(null); }} onCancel={() => setModal(null)} />;
+        if (modal.type === 'reopen') return <ConfirmDel title="Rouvrir la poche" msg={`Rouvrir « ${modal.poche.nom} » ? Les transactions et valorisations existantes seront conservées.`} okLabel="Rouvrir" danger={false} onOk={() => { if (updateP(modal.poche.id, { closedAt: undefined })) setModal(modal.repairHistory ? { type: 'repairHistory', poche: modal.repairPocket } : null); }} onCancel={() => setModal(modal.repairHistory ? { type: 'repairHistory', poche: modal.repairPocket } : null)} />;
         if (modal.type === 'p') return <ModalPoche onAdd={addP} onClose={() => setModal(null)} count={ps.length} categories={categories} />;
         if (modal.type === 'editPoche') return <ModalEditPoche poche={modal.poche} categories={categories} onSave={(id, patch) => { if (updateP(id, patch)) setModal(null); }} onClose={() => setModal(null)} />;
         if (modal.type === 'confirm') return <ConfirmDel msg={modal.msg} onOk={() => { modal.onOk(); setModal(null); }} onCancel={() => setModal(null)} />;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assertHistoryEditable, assertPocketWritable, buildPocketHistory, buildPortfolioHistory, calculateXirr, getAnnualPerformanceRows, getPocketMetrics, getPortfolioMetrics, prepareContribution, prepareWithdrawal, readPortfolioData, validatePortfolio, validatePocketClosures, type Transaction, type Valuation } from './portfolioAnalytics';
+import { assertHistoryEditable, assertPocketWritable, buildPocketHistory, buildPortfolioHistory, calculateXirr, completeWithdrawalValue, getAnnualPerformanceRows, getPocketMetrics, getPortfolioMetrics, prepareContribution, prepareWithdrawal, readPortfolioData, validatePortfolio, validatePocketClosures, type Transaction, type Valuation } from './portfolioAnalytics';
 import { DEMO_POCKETS, DEMO_TRANSACTIONS, DEMO_VALUATIONS } from '../data/demoData';
 
 const pocket = { id: 'closed', closedAt: '2025-06-01' };
@@ -166,6 +166,76 @@ describe('financial consistency', () => {
         expect(getPocketMetrics('pea', flows, values)).toMatchObject({ valActu: 90, gainTotal: 10, valueEstimated: true });
         expect(getAnnualPerformanceRows('pea', flows, values).at(-1)).toMatchObject({ retraits: 20, emv: 90, perfE: 10, valueEstimated: true });
         expect(JSON.stringify({ flows, values })).toBe(snapshot);
+    });
+});
+
+describe('withdrawal history repair', () => {
+    const pockets = [{ id: 'pea' }];
+    const flows: Transaction[] = [
+        { pocheId: 'pea', type: 'apport', montant: 100, timestamp: '2025-01-01' },
+        { pocheId: 'pea', type: 'retrait', montant: 60, timestamp: '2025-06-01', commentaire: 'Ancien retrait' },
+    ];
+    const values: Valuation[] = [{ pocheId: 'pea', valeur: 60, date: '2025-06-01' }];
+
+    it('restores latent and realized returns without rewriting financial history', () => {
+        const snapshot = JSON.stringify({ pockets, flows, values });
+        const original = getPocketMetrics('pea', flows, values);
+        expect(original.gainLatent).toBeNull();
+        const next = completeWithdrawalValue(pockets, flows, values, flows[1], 120);
+        expect(next).toEqual([flows[0], { ...flows[1], valeurAvant: 120 }]);
+        expect(next[0]).toBe(flows[0]);
+        expect(next[1].id).toBeUndefined();
+        expect(getPocketMetrics('pea', next, values)).toMatchObject({ ...original, gainLatent: 10, gainNonRealise: 10, gainRealise: 10 });
+        expect(getPortfolioMetrics(pockets, next, values).latent).toBe(10);
+        expect(buildPortfolioHistory(pockets, next, values)).toEqual(buildPortfolioHistory(pockets, flows, values));
+        expect(getAnnualPerformanceRows('pea', next, values)).toEqual(getAnnualPerformanceRows('pea', flows, values));
+        expect(JSON.stringify({ pockets, flows, values })).toBe(snapshot);
+    });
+
+    it('keeps the latent unavailable until all required withdrawals are completed', () => {
+        const pending: Transaction[] = [...flows, { ...flows[1], montant: 10, timestamp: '2025-07-01' }];
+        const first = completeWithdrawalValue(pockets, pending, values, pending[1], 120);
+        expect(getPocketMetrics('pea', first, values).gainLatent).toBeNull();
+        const second = completeWithdrawalValue(pockets, first, values, first[2], 60);
+        expect(getPocketMetrics('pea', second, values).gainLatent).not.toBeNull();
+    });
+
+    it('changes only the selected legacy entry even when dates and amounts match', () => {
+        const identical = [...flows, { ...flows[1] }];
+        const next = completeWithdrawalValue(pockets, identical, values, identical[2], 120);
+        expect(next[1]).toBe(identical[1]);
+        expect(next[1].valeurAvant).toBeUndefined();
+        expect(next[2].valeurAvant).toBe(120);
+        expect(() => completeWithdrawalValue(pockets, identical, values, { ...identical[2] }, 120)).toThrow(/changé/);
+    });
+
+    it('completes a historical value without deleting or recomputing later linked balances', () => {
+        const later: Transaction[] = [...flows, { id: 'w2', pocheId: 'pea', type: 'retrait', montant: 10, timestamp: '2025-07-01', valeurAvant: 60 }];
+        const laterValues = [...values, { id: 'v2', pocheId: 'pea', valeur: 50, date: '2025-07-01', transactionId: 'w2' }];
+        expect(() => assertHistoryEditable('pea', flows[1].timestamp, laterValues)).toThrow();
+        const next = completeWithdrawalValue(pockets, later, laterValues, later[1], 120);
+        expect(next[2]).toBe(later[2]);
+        expect(getPocketMetrics('pea', next, laterValues).gainLatent).toBeCloseTo(50 / 6);
+        expect(() => validatePortfolio(pockets, next, laterValues)).not.toThrow();
+    });
+
+    it.each([0, -1, 59.99, NaN, Infinity, Number.MAX_SAFE_INTEGER])('rejects an invalid historical value: %s', value => {
+        expect(() => completeWithdrawalValue(pockets, flows, values, flows[1], value)).toThrow();
+        expect(flows[1].valeurAvant).toBeUndefined();
+    });
+
+    it('uses cents and permits a confirmed full withdrawal', () => {
+        expect(completeWithdrawalValue(pockets, flows, values, flows[1], 60)[1].valeurAvant).toBe(60);
+        expect(completeWithdrawalValue(pockets, flows, values, flows[1], 120.125)[1].valeurAvant).toBe(120.13);
+    });
+
+    it('requires explicit reopening and does not overwrite already completed entries', () => {
+        const closed = [{ id: 'pea', closedAt: '2025-06-01' }];
+        expect(() => completeWithdrawalValue(closed, flows, values, flows[1], 120)).toThrow(/Rouvrez/);
+        expect(() => completeWithdrawalValue([], flows, values, flows[1], 120)).toThrow(/introuvable/);
+        expect(() => completeWithdrawalValue(pockets, flows, values, flows[0], 120)).toThrow(/Seul un retrait/);
+        const completed = completeWithdrawalValue(pockets, flows, values, flows[1], 120);
+        expect(() => completeWithdrawalValue(pockets, completed, values, completed[1], 130)).toThrow(/Seul un retrait/);
     });
 });
 
