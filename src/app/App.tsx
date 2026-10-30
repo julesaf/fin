@@ -215,6 +215,10 @@ const CUMUL_INFO = {
 // ── Atoms ──
 function Dot({ c, sz = 8 }) { return <span style={{ width: sz, height: sz, borderRadius: '50%', background: c, display: 'inline-block', flexShrink: 0, boxShadow: `0 0 8px ${c}80` }} />; }
 function Tag({ label, color }) { return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 8px 2px 5px', borderRadius: 5, fontSize: '.66rem', fontWeight: 600, background: `${color}15`, color, border: `1px solid ${color}25` }}><span style={{ width: 4, height: 4, borderRadius: '50%', background: color, flexShrink: 0 }} />{label}</span>; }
+function PocketUpdateTag({ date }) {
+    const T = useT();
+    return <span title={date ? 'Dernière date de valorisation ou de mouvement' : 'Aucune valorisation ni opération enregistrée'}><Tag label={date ? `MAJ ${fDt(date)}` : 'Sans données'} color={T.t2} /></span>;
+}
 function Badge({ ch, c = ACC }) { return <span style={{ padding: '1px 6px', borderRadius: 4, fontSize: '.57rem', fontWeight: 700, background: `${c}18`, color: c, letterSpacing: '.06em', textTransform: 'uppercase', border: `1px solid ${c}22` }}>{ch}</span>; }
 function ChartGuide({ color, mode = 'value' }) {
     const T = useT();
@@ -1120,7 +1124,7 @@ function HeroBanner({ gm, ps, vs, ts, onRepairHistory }) {
 // ── Poche card ──
 function PocheCard({ p, vals, txs, total, onClick }) {
     const T = useT(); const [h, setH] = useState(false);
-    const gainPct = p.capital > 0 ? p.gainTotal / p.capital : null;
+    const gainPct = p.closedAt ? p.gainTotalPct : p.capital > 0 ? p.gainTotal / p.capital : null;
     const alloc = total > 0 ? Math.min(p.valActu / total, 1) : 0;
     const isUp = p.gainTotal >= 0;
     return (
@@ -1135,15 +1139,17 @@ function PocheCard({ p, vals, txs, total, onClick }) {
                     <Dot c={p.couleur} sz={7} />
                     <span style={{ fontWeight: 700, fontSize: '.88rem', color: T.t1, flex: 1 }}>{p.nom}</span>
                     {p.categorie && <Tag label={p.categorie} color={p.couleur} />}
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: '.74rem', fontWeight: 700, color: gc(gainPct) }}>
-                        {isUp ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}{fPctS(gainPct)}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                    <div style={{ fontSize: '1.4rem', fontWeight: 800, color: T.t1, letterSpacing: '-.03em', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{fEUR(p.valActu)}</div>
+                    <span title={p.closedAt ? 'Performance globale : résultat total rapporté aux apports cumulés, non annualisée' : undefined} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: '.74rem', fontWeight: 700, color: gc(gainPct) }}>
+                        {gainPct !== null && (isUp ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />)}{p.closedAt ? 'Global ' : ''}{fPctS(gainPct)}
                     </span>
                 </div>
-                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: T.t1, letterSpacing: '-.03em', fontVariantNumeric: 'tabular-nums', marginBottom: '.5rem', lineHeight: 1 }}>{fEUR(p.valActu)}</div>
-                {p.valueEstimated && <div style={{ fontSize: '.65rem', color: T.t3, marginBottom: 8 }}>Valeur estimée</div>}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginBottom: 8 }}><PocketUpdateTag date={p.lastUpdate} />{p.valueEstimated && <span style={{ fontSize: '.65rem', color: T.t3 }}>Valeur estimée</span>}</div>
                 {p.closedAt && <div style={{ color: T.t2, fontSize: '.68rem', marginBottom: 8 }}>Clôturée le {fDt(p.closedAt)} · Résultat <strong style={{ color: gc(p.gainTotal) }}>{fEURS(p.gainTotal)}</strong></div>}
-                <div style={{ display: 'flex', gap: 10, fontSize: '.67rem', color: T.t2, marginBottom: '.65rem' }}>
-                    <span>Cap. <strong style={{ color: T.t1, fontVariantNumeric: 'tabular-nums' }}>{fEUR(p.capital)}</strong></span>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: '.67rem', color: T.t2, marginBottom: '.65rem' }}>
+                    <span>{p.closedAt ? 'Apports' : 'Cap. net'} <strong style={{ color: T.t1, fontVariantNumeric: 'tabular-nums' }}>{fEUR(p.closedAt ? p.apports : p.capital)}</strong></span>
                     <span style={{ color: T.t3 }}>·</span>
                     <span>XIRR{p.valueEstimated && p.xirr !== null ? ' estimé' : ''} <strong style={{ color: gc(p.xirr), fontVariantNumeric: 'tabular-nums' }}>{fPctS(p.xirr)}</strong></span>
                 </div>
@@ -1263,8 +1269,8 @@ function PocheDetail({ poche, txs, vals, onBack, onDelTx, onDelVal, onDelPoche, 
     const conf = (msg, fn) => setModal({ type: 'confirm', msg, onOk: fn });
 
     const kpis = [
-        { label: m.valueEstimated ? 'Valeur estimée' : 'Valeur', value: fEUR(m.valActu), sub: `Capital : ${fEUR(m.capital)}`, color: poche.couleur },
-        { label: poche.closedAt ? 'Résultat final' : m.valueEstimated ? 'Gain estimé' : 'Gain', value: poche.closedAt ? fEURS(m.gainTotal) : fPctS(gainPct), sub: poche.closedAt ? 'Latent : 0 €' : fEURS(m.gainTotal), color: gc(m.gainTotal) },
+        { label: m.valueEstimated ? 'Valeur estimée' : 'Valeur', value: fEUR(m.valActu), sub: poche.closedAt ? `Apports : ${fEUR(m.apports)}` : `Capital net : ${fEUR(m.capital)}`, color: poche.couleur },
+        { label: poche.closedAt ? 'Performance globale' : m.valueEstimated ? 'Gain estimé' : 'Gain', value: poche.closedAt ? fPctS(m.gainTotalPct) : fPctS(gainPct), sub: poche.closedAt ? `Résultat : ${fEURS(m.gainTotal)}` : fEURS(m.gainTotal), color: gc(m.gainTotal) },
         { label: m.valueEstimated && m.xirr !== null ? 'XIRR estimé' : 'XIRR', value: fPctS(m.xirr), sub: 'Annualisé net', color: gc(m.xirr), info: XIRR_INFO },
         { label: m.dietzEstimated ? 'Dietz estimé' : 'Dietz', value: fPctS(m.dietz), sub: 'Période complète', color: gc(m.dietz), info: DIETZ_INFO },
     ];
@@ -1282,6 +1288,7 @@ function PocheDetail({ poche, txs, vals, onBack, onDelTx, onDelVal, onDelPoche, 
                     {poche.categorie && <Tag label={poche.categorie} color={poche.couleur} />}
                     <Pencil size={11} color={T.t2} />
                 </button>
+                <PocketUpdateTag date={m.lastUpdate} />
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     {!poche.closedAt && !isMobile && <Btn primary onClick={() => setModal({ type: 'saisie', poche: poche.id })}><Plus size={11} />Saisie</Btn>}
                     <Btn ghost onClick={() => setModal({ type: poche.closedAt ? 'reopen' : 'closePocket', poche })}>{poche.closedAt ? <RotateCcw size={13} /> : <Archive size={13} />}{poche.closedAt ? 'Rouvrir' : 'Clôturer'}</Btn>
@@ -1414,7 +1421,9 @@ function Dashboard({ pm, gm, ts, vs, ps, setSelP, setModal, dataMode, impJSON, s
     const { th, thR, td, tdR } = useTS();
     const [sort, setSort] = useState({ key: 'valActu', dir: 'desc' });
     const sortedPm = useMemo(() => {
-        const val = (p, key) => key === 'nom' ? (p.nom || '').toLocaleLowerCase('fr-FR') : key === 'gainPct' ? (p.capital > 0 ? p.gainTotal / p.capital : -Infinity) : p[key] ?? -Infinity;
+        const val = (p, key) => key === 'nom' ? (p.nom || '').toLocaleLowerCase('fr-FR')
+            : key === 'gainPct' ? p.closedAt ? p.gainTotalPct ?? -Infinity : p.capital > 0 ? p.gainTotal / p.capital : -Infinity
+                : key === 'capital' && p.closedAt ? p.apports : p[key] ?? -Infinity;
         return [...pm].sort((a, b) => {
             const av = val(a, sort.key), bv = val(b, sort.key);
             const cmp = typeof av === 'string' ? av.localeCompare(bv, 'fr-FR') : av - bv;
@@ -1455,13 +1464,13 @@ function Dashboard({ pm, gm, ts, vs, ps, setSelP, setModal, dataMode, impJSON, s
                             </thead>
                             <tbody>
                                 {sortedPm.map(p => {
-                                    const gp = p.capital > 0 ? p.gainTotal / p.capital : null;
+                                    const gp = p.closedAt ? p.gainTotalPct : p.capital > 0 ? p.gainTotal / p.capital : null;
                                     return (
                                         <TRow key={p.id} onClick={() => setSelP(p.id)}>
-                                            <td style={td}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}><Dot c={p.couleur} sz={7} /><span style={{ fontWeight: 600, color: T.t1 }}>{p.nom}</span>{p.closedAt && <Tag label="Clôturée" color={T.t2} />}</span></td>
-                                            {!isMobile && <td style={{ ...tdR, color: T.t2 }}>{fEUR(p.capital)}</td>}
+                                            <td style={td}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}><Dot c={p.couleur} sz={7} /><span style={{ fontWeight: 600, color: T.t1 }}>{p.nom}</span>{p.closedAt && <Tag label="Clôturée" color={T.t2} />}</span><div style={{ marginTop: 4 }}><PocketUpdateTag date={p.lastUpdate} /></div></td>
+                                            {!isMobile && <td title={p.closedAt ? 'Apports cumulés avant clôture' : 'Apports moins retraits'} style={{ ...tdR, color: T.t2 }}>{fEUR(p.closedAt ? p.apports : p.capital)}<div style={{ fontSize: '.6rem', color: T.t3 }}>{p.closedAt ? 'Apports' : 'Net'}</div></td>}
                                             <td style={{ ...tdR, fontWeight: 600, color: ACC }}>{fEUR(p.valActu)}{p.valueEstimated && <div style={{ fontSize: '.6rem', color: T.t3 }}>Estimée</div>}</td>
-                                            <td style={{ ...tdR, fontWeight: 700, color: gc(gp) }}>{fPctS(gp)}{p.valueEstimated && gp !== null && <div style={{ fontSize: '.6rem', color: T.t3 }}>Estimé</div>}</td>
+                                            <td title={p.closedAt ? 'Performance globale sur les apports cumulés, non annualisée' : undefined} style={{ ...tdR, fontWeight: 700, color: gc(gp) }}>{fPctS(gp)}{p.closedAt && <div style={{ fontSize: '.6rem', color: T.t3 }}>Global</div>}{p.valueEstimated && gp !== null && <div style={{ fontSize: '.6rem', color: T.t3 }}>Estimé</div>}</td>
                                             {!isMobile && <td style={{ ...tdR, fontWeight: 500, color: gc(p.gainTotal) }}>{fEURS(p.gainTotal)}{p.valueEstimated && <div style={{ fontSize: '.6rem', color: T.t3 }}>Estimé</div>}</td>}
                                             <td style={{ ...tdR, fontWeight: 700, color: gc(p.xirr) }}>{fPctS(p.xirr)}{p.valueEstimated && p.xirr !== null && <div style={{ fontSize: '.6rem', color: T.t3 }}>Estimé</div>}</td>
                                             {!isMobile && <td style={{ ...tdR, color: gc(p.dietz) }}>{fPctS(p.dietz)}{p.dietzEstimated && <div style={{ fontSize: '.6rem', color: T.t3 }}>Estimé</div>}</td>}

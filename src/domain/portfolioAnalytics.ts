@@ -56,6 +56,8 @@ export type PocketMetrics = {
     realizedEstimated: boolean;
     dietzEstimated: boolean;
     gainTotal: number;
+    gainTotalPct: number | null;
+    lastUpdate: string | null;
     gainNonRealise: number | null;
     gainLatent: number | null;
     gainRealise: number | null;
@@ -690,6 +692,8 @@ export function getPocketMetrics(pocketId: string, transactions: Transaction[], 
         realizedEstimated: gainNonRealise !== null && costEstimated,
         dietzEstimated: dietz !== null && (valueEstimated || isPocketValueEstimatedAtDate(pocketId, transactions, valuations, pocketValuations[0].date)),
         gainTotal,
+        gainTotalPct: apports > 0 ? gainTotal / apports : null,
+        lastUpdate: endDate ?? null,
         gainNonRealise,
         gainLatent: gainNonRealise,
         gainRealise: gainNonRealise === null ? null : gainTotal - gainNonRealise,

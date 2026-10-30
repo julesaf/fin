@@ -514,6 +514,8 @@ describe('pocket closure', () => {
         const result = getPocketMetrics(pocket.id, flows, valuations, pocket.closedAt);
         expect(result.valActu).toBe(0);
         expect(result.gainTotal).toBe(amount - 100);
+        expect(result.gainTotalPct).toBe((amount - 100) / 100);
+        expect(result.lastUpdate).toBe(pocket.closedAt);
         expect(result.gainLatent).toBe(0);
         expect(result.gainNonRealise).toBe(0);
         const aggregate = getPortfolioMetrics([pocket], flows, valuations);
@@ -521,6 +523,35 @@ describe('pocket closure', () => {
         expect(aggregate.latent).toBe(0);
         expect(aggregate.xirr).toBe(getPortfolioMetrics([{ id: pocket.id }], flows, valuations).xirr);
         expect(() => validatePocketClosures([pocket], flows, valuations)).not.toThrow();
+    });
+
+    it('measures total return on all contributions without changing net capital', () => {
+        const flows: Transaction[] = [
+            { pocheId: 'pea', type: 'apport', montant: 1000, timestamp: '2025-01-01' },
+            { pocheId: 'pea', type: 'retrait', montant: 500, timestamp: '2025-03-01' },
+            { pocheId: 'pea', type: 'apport', montant: 1000, timestamp: '2025-04-01' },
+            { pocheId: 'pea', type: 'retrait', montant: 2620, timestamp: '2025-06-01' },
+        ];
+        const result = getPocketMetrics('pea', flows, [{ pocheId: 'pea', valeur: 0, date: '2025-06-01' }], '2025-06-01');
+        expect(result).toMatchObject({ apports: 2000, retraits: 3120, capital: -1120, gainTotal: 1120, gainTotalPct: .56, lastUpdate: '2025-06-01' });
+        expect(getPocketMetrics('empty', [], [])).toMatchObject({ gainTotalPct: null, lastUpdate: null });
+        expect(getPocketMetrics('pea', [flows[1]], []).gainTotalPct).toBeNull();
+    });
+
+    it('reports the latest financial date per pocket rather than array order', () => {
+        const flows: Transaction[] = [
+            { pocheId: 'pea', type: 'apport', montant: 10, timestamp: '2025-07-01' },
+            { pocheId: 'other', type: 'apport', montant: 10, timestamp: '2025-09-01' },
+            { pocheId: 'pea', type: 'apport', montant: 10, timestamp: '2025-02-01' },
+        ];
+        const values = [
+            { pocheId: 'pea', valeur: 50, date: '2025-08-01' },
+            { pocheId: 'other', valeur: 80, date: '2025-10-01' },
+            { pocheId: 'pea', valeur: 10, date: '2025-01-01' },
+        ];
+        expect(getPocketMetrics('pea', flows, values).lastUpdate).toBe('2025-08-01');
+        expect(getPocketMetrics('pea', flows, values.slice(1)).lastUpdate).toBe('2025-07-01');
+        expect(getPocketMetrics('pea', [], values).lastUpdate).toBe('2025-08-01');
     });
 
     it('keeps closed gains alongside active capital and historical points', () => {
