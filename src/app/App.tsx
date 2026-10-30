@@ -28,7 +28,7 @@ import {
     buildPocketHistory,
     buildPortfolioHistory,
     calculatePerformanceAtDate,
-    completeWithdrawalValue,
+    completeWithdrawalHistory,
     estimateWithdrawalValue,
     getAnnualPerformanceRows,
     getPocketMetrics,
@@ -664,6 +664,7 @@ function ModalRepairHistory({ poches, txs, pocheId, transaction, vals, onSave, o
     const [value, setValue] = useState('');
     const [entryMode, setEntryMode] = useState('confirmed');
     const [estimateAccepted, setEstimateAccepted] = useState(false);
+    const [sameDayAfterConfirmed, setSameDayAfterConfirmed] = useState(false);
     const [saveError, setSaveError] = useState('');
     const [notice, setNotice] = useState('');
     const groups = poches.filter(pocket => !pocheId || pocket.id === pocheId).map(pocket => ({
@@ -674,16 +675,22 @@ function ModalRepairHistory({ poches, txs, pocheId, transaction, vals, onSave, o
     const pendingCount = groups.reduce((count, group) => count + group.entries.length, 0);
     const estimatedCount = groups.reduce((count, group) => count + group.entries.filter(({ entry }) => entry.valeurAvantEstimation).length, 0);
     const selectedPocket = selected ? poches.find(pocket => pocket.id === selected.pocheId) : null;
-    const proposal = selected ? estimateWithdrawalValue(txs, vals, selected) : null;
+    const sameDayObservation = selected ? vals.filter(valuation => valuation.pocheId === selected.pocheId && valuation.date === selected.timestamp && !valuation.estimee).at(-1) : null;
+    const needsChronology = !!sameDayObservation && !sameDayObservation.transactionId;
+    const proposal = selected ? estimateWithdrawalValue(txs, vals, selected, sameDayAfterConfirmed) : null;
     const estimating = entryMode === 'estimated';
     const chosenValue = estimating ? proposal?.valueBefore : value === '' ? undefined : Number(value);
     let valueError = '';
+    let dependentCount = 0;
     if (selected && chosenValue !== undefined) {
-        try { completeWithdrawalValue(poches, txs, vals, selected, chosenValue, estimating ? proposal : undefined); }
+        try {
+            const preview = completeWithdrawalHistory(poches, txs, vals, selected, chosenValue, estimating ? proposal : undefined);
+            dependentCount = preview.transactions.filter((entry, index) => txs[index] !== selected && entry !== txs[index]).length;
+        }
         catch (err) { valueError = err.message; }
     }
     const canSave = !!selected && !!selectedPocket && !selectedPocket.closedAt && chosenValue !== undefined && !valueError && (!estimating || estimateAccepted);
-    const back = () => { setSelected(null); setValue(''); setSaveError(''); setEntryMode('confirmed'); setEstimateAccepted(false); };
+    const back = () => { setSelected(null); setValue(''); setSaveError(''); setEntryMode('confirmed'); setEstimateAccepted(false); setSameDayAfterConfirmed(false); };
     const save = () => {
         if (!canSave) return;
         const error = onSave(selected, chosenValue, estimating ? proposal : undefined);
@@ -704,7 +711,8 @@ function ModalRepairHistory({ poches, txs, pocheId, transaction, vals, onSave, o
                     <div style={{ color: T.t2, fontSize: '.75rem' }}>Poche clôturée le {fDt(selectedPocket.closedAt)} · Opérations en lecture seule</div>
                     <Btn ghost onClick={() => onReopen(selectedPocket)}><RotateCcw size={13} />Rouvrir la poche</Btn>
                 </> : <>
-                    <Segmented label="Origine de la valeur" value={entryMode} options={[{ value: 'confirmed', label: 'Valeur confirmée' }, { value: 'estimated', label: 'Valeur inconnue' }]} onChange={mode => { setEntryMode(mode); setEstimateAccepted(false); setSaveError(''); }} />
+                    <Segmented label="Origine de la valeur" value={entryMode} options={[{ value: 'confirmed', label: 'Valeur confirmée' }, { value: 'estimated', label: 'Valeur inconnue' }]} onChange={mode => { setEntryMode(mode); setEstimateAccepted(false); setSameDayAfterConfirmed(false); setSaveError(''); }} />
+                    {estimating && needsChronology && <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, color: T.t2, fontSize: '.74rem', lineHeight: 1.5, cursor: 'pointer' }}><input type="checkbox" aria-label="Le solde du jour est postérieur à tous les mouvements" checked={sameDayAfterConfirmed} onChange={event => { setSameDayAfterConfirmed(event.target.checked); setEstimateAccepted(false); setSaveError(''); }} style={{ marginTop: 3, flexShrink: 0, accentColor: ACC }} /><span>Je confirme que le solde de {fEUR(sameDayObservation.valeur)} du {fDt(sameDayObservation.date)} est postérieur à tous les mouvements de cette journée, y compris ce retrait.</span></label>}
                     {estimating ? proposal ? <div style={{ display: 'grid', gap: 10 }}>
                         <div style={{ color: T.t2, fontSize: '.74rem' }}>Valeur avant retrait estimée <output aria-label="Valeur avant retrait estimée" style={{ display: 'block', color: T.t1, fontSize: '1.2rem', fontWeight: 700 }}>{fEUR(proposal.valueBefore)}</output></div>
                         <div style={{ color: T.t2, fontSize: '.74rem', lineHeight: 1.6 }}>
@@ -713,12 +721,13 @@ function ModalRepairHistory({ poches, txs, pocheId, transaction, vals, onSave, o
                             <div style={{ color: AMB }}>Hypothèse : aucune variation de marché entre les mouvements. Ce montant n’est pas une valorisation confirmée.</div>
                         </div>
                         <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, color: T.t2, fontSize: '.74rem', lineHeight: 1.5, cursor: 'pointer' }}><input type="checkbox" aria-label="J’accepte cette estimation" checked={estimateAccepted} onChange={event => setEstimateAccepted(event.target.checked)} style={{ marginTop: 3, flexShrink: 0, accentColor: ACC }} /><span>J’accepte cette estimation et son utilisation dans les indicateurs concernés.</span></label>
-                    </div> : <div role="status" style={{ color: AMB, fontSize: '.75rem', lineHeight: 1.6 }}>Estimation indisponible : aucun solde de référence suffisant ne permet un calcul cohérent. Aucune valeur ne sera inventée.</div> : <div>
+                    </div> : <div role="status" style={{ color: AMB, fontSize: '.75rem', lineHeight: 1.6 }}>{needsChronology && !sameDayAfterConfirmed ? 'La date seule ne suffit pas à situer ce solde avant ou après le retrait. Confirmez son ordre uniquement si vous le connaissez ; sinon, renseignez une valeur confirmée.' : 'Estimation indisponible : aucun solde de référence suffisant ne permet un calcul cohérent sans solde intermédiaire négatif. Aucune valeur ne sera inventée.'}</div> : <div>
                         <label htmlFor={fieldId} style={{ fontSize: '.73rem', color: T.t2, display: 'block', marginBottom: 6 }}>Valeur de la poche avant le retrait (€)</label>
                         <Inp id={fieldId} aria-describedby={`${fieldId}-source${valueError || saveError ? ` ${fieldId}-error` : ''}`} autoFocus type="number" inputMode="decimal" min={selected.montant} step="0.01" value={value} onChange={event => { setValue(event.target.value); setSaveError(''); }} />
                         <div id={`${fieldId}-source`} style={{ color: T.t3, fontSize: '.68rem', marginTop: 6 }}>Valeur historique figurant sur le relevé, avant ce retrait.</div>
                     </div>}
                 </>}
+                {dependentCount > 0 && <div role="status" style={{ color: AMB, fontSize: '.74rem', lineHeight: 1.6 }}>{dependentCount} mouvement(s) estimé(s) suivant(s) et leurs soldes liés seront recalculés. Les observations confirmées resteront inchangées.</div>}
                 {(valueError || saveError) && <div id={`${fieldId}-error`} role="alert" style={{ color: AMB, fontSize: '.74rem' }}>{valueError || saveError}</div>}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
                     <Btn ghost onClick={back}>Annuler</Btn>
@@ -735,7 +744,7 @@ function ModalRepairHistory({ poches, txs, pocheId, transaction, vals, onSave, o
                     {pocket.closedAt && <div style={{ color: T.t3, fontSize: '.7rem', paddingTop: 8 }}>Clôturée le {fDt(pocket.closedAt)} · Lecture seule</div>}
                     {entries.map(({ entry, index }) => <div key={index} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', alignItems: 'center', gap: 8, padding: '10px 0', borderBottom: `1px solid ${T.brd}` }}>
                         <div style={{ minWidth: 0 }}><div style={{ fontSize: '.75rem', color: T.t1 }}>{fDt(entry.timestamp)} · {fEUR(entry.montant)}</div>{entry.valeurAvantEstimation && <div style={{ color: AMB, fontSize: '.68rem', marginTop: 3 }}>Valeur estimée : {fEUR(entry.valeurAvant)}</div>}{entry.commentaire && <div style={{ fontSize: '.68rem', color: T.t3, marginTop: 3 }}>{entry.commentaire}</div>}</div>
-                        <Btn ghost disabled={!!pocket.closedAt} aria-label={`${entry.valeurAvantEstimation ? 'Confirmer la valeur du retrait' : 'Compléter le retrait'} du ${fDt(entry.timestamp)} de ${pocket.nom || 'la poche'} (${index + 1})`} onClick={() => { setSelected(entry); setValue(''); setSaveError(''); setNotice(''); setEntryMode('confirmed'); setEstimateAccepted(false); }}><Pencil size={12} />{entry.valeurAvantEstimation ? 'Confirmer' : 'Compléter'}</Btn>
+                        <Btn ghost disabled={!!pocket.closedAt} aria-label={`${entry.valeurAvantEstimation ? 'Confirmer la valeur du retrait' : 'Compléter le retrait'} du ${fDt(entry.timestamp)} de ${pocket.nom || 'la poche'} (${index + 1})`} onClick={() => { setSelected(entry); setValue(''); setSaveError(''); setNotice(''); setEntryMode('confirmed'); setEstimateAccepted(false); setSameDayAfterConfirmed(false); }}><Pencil size={12} />{entry.valeurAvantEstimation ? 'Confirmer' : 'Compléter'}</Btn>
                     </div>)}
                 </section>)}
             </>}
@@ -2022,8 +2031,8 @@ export default function App() {
     };
     const handleCompleteWithdrawal = (transaction, valueBefore, estimate?: WithdrawalValueEstimate) => {
         try {
-            const next = completeWithdrawalValue(ps, ts, vs, transaction, valueBefore, estimate);
-            markPersonal(); setTs(next); return '';
+            const next = completeWithdrawalHistory(ps, ts, vs, transaction, valueBefore, estimate);
+            markPersonal(); setTs(next.transactions); setVs(next.valuations); return '';
         }
         catch (err) { return err.message || 'La correction n’a pas pu être enregistrée.'; }
     };

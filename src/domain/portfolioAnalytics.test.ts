@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assertHistoryEditable, assertPocketWritable, buildPocketHistory, buildPortfolioHistory, calculateXirr, completeWithdrawalValue, estimateWithdrawalValue, getAnnualPerformanceRows, getPocketMetrics, getPortfolioMetrics, prepareContribution, prepareWithdrawal, readPortfolioData, validatePortfolio, validatePocketClosures, type Transaction, type Valuation } from './portfolioAnalytics';
+import { assertHistoryEditable, assertPocketWritable, buildPocketHistory, buildPortfolioHistory, calculateXirr, completeWithdrawalHistory, completeWithdrawalValue, estimateWithdrawalValue, getAnnualPerformanceRows, getPocketMetrics, getPortfolioMetrics, prepareContribution, prepareWithdrawal, readPortfolioData, validatePortfolio, validatePocketClosures, type Transaction, type Valuation } from './portfolioAnalytics';
 import { DEMO_POCKETS, DEMO_TRANSACTIONS, DEMO_VALUATIONS } from '../data/demoData';
 
 const pocket = { id: 'closed', closedAt: '2025-06-01' };
@@ -279,7 +279,35 @@ describe('historical withdrawal estimates', () => {
     it('prefers the balance after the withdrawal and reverses later same-day flows', () => {
         const sameDay: Transaction[] = [...flows, { pocheId: 'pea', type: 'apport', montant: 10, timestamp: '2025-06-01' }];
         const source = [...values, { pocheId: 'pea', valeur: 70, date: '2025-06-01' }];
+        expect(estimateWithdrawalValue(sameDay, source, sameDay[1])).toBeNull();
+        expect(estimateWithdrawalValue(sameDay, source, sameDay[1], true)).toEqual({ valueBefore: 120, method: 'after-withdrawal', sourceDate: '2025-06-01', sourceValue: 70, sourceAfterDayFlows: true });
+    });
+
+    it('requires explicit chronology for unlinked same-day observations and persists it', () => {
+        const source = [{ pocheId: 'pea', valeur: 120, date: '2025-06-01' }];
+        expect(estimateWithdrawalValue(flows, source, flows[1])).toBeNull();
+        const estimate = estimateWithdrawalValue(flows, source, flows[1], true)!;
+        expect(estimate.valueBefore).toBe(180);
+        const next = completeWithdrawalValue(pockets, flows, source, flows[1], 180, estimate);
+        expect(next[1].valeurAvantEstimation?.sourceAfterDayFlows).toBe(true);
+        expect(readPortfolioData(JSON.parse(JSON.stringify({ p: pockets, t: next, v: source })))!.transactions[1].valeurAvantEstimation?.sourceAfterDayFlows).toBe(true);
+        expect(() => completeWithdrawalValue(pockets, flows, source, flows[1], 180, { ...estimate, sourceAfterDayFlows: undefined })).toThrow(/changé/);
+    });
+
+    it('uses a linked later observation without assuming end-of-day ordering', () => {
+        const sameDay: Transaction[] = [...flows, { id: 'later', pocheId: 'pea', type: 'apport', montant: 10, timestamp: '2025-06-01', valeurAvant: 60 }];
+        const source = [...values, { pocheId: 'pea', valeur: 70, date: '2025-06-01', transactionId: 'later' }];
+        expect(() => validatePortfolio(pockets, sameDay, source)).not.toThrow();
         expect(estimateWithdrawalValue(sameDay, source, sameDay[1])).toEqual({ valueBefore: 120, method: 'after-withdrawal', sourceDate: '2025-06-01', sourceValue: 70 });
+    });
+
+    it('rejects negative intermediate balances when reversing a full day', () => {
+        const sameDay: Transaction[] = [flows[0], flows[1], { pocheId: 'pea', type: 'retrait', montant: 100, timestamp: '2025-06-01' }, { pocheId: 'pea', type: 'apport', montant: 200, timestamp: '2025-06-01' }];
+        const source = [{ pocheId: 'pea', valeur: 100, date: '2025-06-01' }];
+        expect(estimateWithdrawalValue(sameDay, source, sameDay[1], true)).toBeNull();
+        expect(estimateWithdrawalValue(sameDay, source, sameDay[2], true)).toBeNull();
+        const negativeStart: Transaction[] = [{ pocheId: 'pea', type: 'apport', montant: 200, timestamp: '2025-06-01' }, flows[1]];
+        expect(estimateWithdrawalValue(negativeStart, source, negativeStart[1], true)).toBeNull();
     });
 
     it('adjusts an older balance by earlier flows without including the target withdrawal', () => {
@@ -316,7 +344,7 @@ describe('historical withdrawal estimates', () => {
 
     it('marks gains as estimated without overriding a later observed balance', () => {
         const source = [...values, { pocheId: 'pea', valeur: 60, date: '2025-06-01' }];
-        const estimate = estimateWithdrawalValue(flows, source, flows[1])!;
+        const estimate = estimateWithdrawalValue(flows, source, flows[1], true)!;
         const next = completeWithdrawalValue(pockets, flows, source, flows[1], estimate.valueBefore, estimate);
         expect(getPocketMetrics('pea', next, source)).toMatchObject({ valActu: 60, valueEstimated: false, gainLatent: 10, gainRealise: 10, latentEstimated: true, realizedEstimated: true });
         expect(getPortfolioMetrics(pockets, next, source)).toMatchObject({ latent: 10, latentEstimated: true, valueEstimated: false });
@@ -353,12 +381,91 @@ describe('historical withdrawal estimates', () => {
         expect(getPocketMetrics('pea', confirmed, [...source, { pocheId: 'pea', valeur: 0, date: '2025-06-01' }])).toMatchObject({ latentEstimated: false, realizedEstimated: false });
     });
 
+    it('rebuilds dependent estimated transactions and snapshots atomically after confirmation', () => {
+        const estimate = estimateWithdrawalValue(flows, values, flows[1])!;
+        const saved = completeWithdrawalValue(pockets, flows, values, flows[1], estimate.valueBefore, estimate);
+        const later: Transaction[] = [...saved, { id: 'later', pocheId: 'pea', type: 'apport', montant: 10, timestamp: '2025-07-01', valeurAvant: 60, valeurAvantEstimee: true }];
+        const snapshots = [...values, { pocheId: 'pea', valeur: 70, date: '2025-07-01', transactionId: 'later', estimee: true }];
+        const original = JSON.stringify({ later, snapshots });
+        const repaired = completeWithdrawalHistory(pockets, later, snapshots, later[1], 160);
+        expect(repaired.transactions[2]).toMatchObject({ valeurAvant: 100, valeurAvantEstimee: true });
+        expect(repaired.valuations[1]).toMatchObject({ valeur: 110, estimee: true });
+        expect(getPocketMetrics('pea', repaired.transactions, repaired.valuations).valActu).toBe(110);
+        expect(() => validatePortfolio(pockets, repaired.transactions, repaired.valuations)).not.toThrow();
+        expect(() => completeWithdrawalValue(pockets, later, snapshots, later[1], 160)).toThrow(/soldes estimés/);
+        expect(JSON.stringify({ later, snapshots })).toBe(original);
+    });
+
+    it('rebuilds successive accepted estimates and their provenance', () => {
+        const saved = completeWithdrawalValue(pockets, flows, values, flows[1], 120, estimateWithdrawalValue(flows, values, flows[1])!);
+        const later: Transaction[] = [...saved, { pocheId: 'pea', type: 'retrait', montant: 10, timestamp: '2025-07-01' }];
+        const accepted = completeWithdrawalValue(pockets, later, values, later[2], 60, estimateWithdrawalValue(later, values, later[2])!);
+        const repaired = completeWithdrawalHistory(pockets, accepted, values, accepted[1], 160);
+        expect(repaired.transactions[2]).toMatchObject({ valeurAvant: 100, valeurAvantEstimation: { sourceDate: '2025-06-01', sourceValue: 160 } });
+        expect(getPocketMetrics('pea', repaired.transactions, repaired.valuations).valActu).toBe(90);
+    });
+
+    it('rebuilds same-day linked chains in transaction order without changing another pocket', () => {
+        const source = [{ pocheId: 'pea', valeur: 100, date: '2025-01-01' }];
+        const original: Transaction[] = [flows[0], { pocheId: 'pea', type: 'retrait', montant: 20, timestamp: '2025-02-01' }];
+        const accepted = completeWithdrawalValue(pockets, original, source, original[1], 100, estimateWithdrawalValue(original, source, original[1])!);
+        const later: Transaction[] = [...accepted,
+        { id: 'a', pocheId: 'pea', type: 'apport', montant: 10, timestamp: '2025-03-01', valeurAvant: 80, valeurAvantEstimee: true },
+        { id: 'w', pocheId: 'pea', type: 'retrait', montant: 30, timestamp: '2025-03-01', valeurAvant: 90, valeurAvantEstimee: true },
+        { pocheId: 'other', type: 'apport', montant: 500, timestamp: '2025-03-01' }];
+        const snapshots = [...source,
+        { pocheId: 'pea', valeur: 90, date: '2025-03-01', transactionId: 'a', estimee: true },
+        { pocheId: 'pea', valeur: 60, date: '2025-03-01', transactionId: 'w', estimee: true },
+        { pocheId: 'other', valeur: 500, date: '2025-03-01' }];
+        const repaired = completeWithdrawalHistory([...pockets, { id: 'other' }], later, snapshots, later[1], 140);
+        expect(repaired.transactions[2].valeurAvant).toBe(120);
+        expect(repaired.transactions[3].valeurAvant).toBe(130);
+        expect(repaired.valuations.map(value => value.valeur)).toEqual([100, 130, 100, 500]);
+        expect(repaired.transactions[4]).toBe(later[4]);
+        expect(repaired.valuations[3]).toBe(snapshots[3]);
+        expect(() => validatePortfolio([...pockets, { id: 'other' }], repaired.transactions, repaired.valuations)).not.toThrow();
+    });
+
+    it('updates the target snapshot and keeps rebuilding past that newly confirmed balance', () => {
+        const saved = completeWithdrawalValue(pockets, flows, values, flows[1], 120, estimateWithdrawalValue(flows, values, flows[1])!);
+        const later: Transaction[] = [saved[0], { ...saved[1], id: 'target' }, { id: 'later', pocheId: 'pea', type: 'apport', montant: 10, timestamp: '2025-07-01', valeurAvant: 60, valeurAvantEstimee: true }];
+        const snapshots = [...values,
+        { pocheId: 'pea', valeur: 60, date: '2025-06-01', transactionId: 'target', estimee: true },
+        { pocheId: 'pea', valeur: 70, date: '2025-07-01', transactionId: 'later', estimee: true }];
+        const repaired = completeWithdrawalHistory(pockets, later, snapshots, later[1], 160);
+        expect(repaired.valuations[1]).toMatchObject({ valeur: 100, estimee: false });
+        expect(repaired.valuations[2]).toMatchObject({ valeur: 110, estimee: true });
+        expect(repaired.transactions[2].valeurAvant).toBe(100);
+        expect(() => validatePortfolio(pockets, repaired.transactions, repaired.valuations)).not.toThrow();
+    });
+
+    it('stops rebuilding at a real observation or confirmed movement', () => {
+        const saved = completeWithdrawalValue(pockets, flows, values, flows[1], 120, estimateWithdrawalValue(flows, values, flows[1])!);
+        const later: Transaction[] = [...saved, { id: 'later', pocheId: 'pea', type: 'apport', montant: 10, timestamp: '2025-07-01', valeurAvant: 80, valeurAvantEstimee: true }];
+        const snapshots = [...values, { pocheId: 'pea', valeur: 80, date: '2025-06-15' }, { pocheId: 'pea', valeur: 90, date: '2025-07-01', transactionId: 'later', estimee: true }];
+        const repaired = completeWithdrawalHistory(pockets, later, snapshots, later[1], 160);
+        expect(repaired.transactions[2]).toBe(later[2]);
+        expect(repaired.valuations).toEqual(snapshots);
+        const confirmed = later.map(entry => entry.id === 'later' ? { ...entry, valeurAvantEstimee: false } : entry);
+        const observed = [values[0], { ...snapshots[2], estimee: false }];
+        expect(completeWithdrawalHistory(pockets, confirmed, observed, confirmed[1], 160).transactions[2]).toBe(confirmed[2]);
+    });
+
+    it('rejects an impossible downstream estimate without changing any record', () => {
+        const saved = completeWithdrawalValue(pockets, flows, values, flows[1], 120, estimateWithdrawalValue(flows, values, flows[1])!);
+        const later: Transaction[] = [...saved, { id: 'later', pocheId: 'pea', type: 'retrait', montant: 50, timestamp: '2025-07-01', valeurAvant: 60, valeurAvantEstimee: true }];
+        const snapshots = [...values, { pocheId: 'pea', valeur: 10, date: '2025-07-01', transactionId: 'later', estimee: true }];
+        const original = JSON.stringify({ later, snapshots });
+        expect(() => completeWithdrawalHistory(pockets, later, snapshots, later[1], 80)).toThrow(/insuffisant/);
+        expect(JSON.stringify({ later, snapshots })).toBe(original);
+    });
+
     it('rejects stale proposals, forged metadata and edits while closed', () => {
         const estimate = estimateWithdrawalValue(flows, values, flows[1])!;
         expect(() => completeWithdrawalValue(pockets, flows, values, flows[1], 130, estimate)).toThrow(/changé/);
         expect(() => completeWithdrawalValue(pockets, flows, values, flows[1], 120, { ...estimate, sourceValue: 999 })).toThrow(/changé/);
         expect(() => completeWithdrawalValue([{ id: 'pea', closedAt: '2025-06-01' }], flows, values, flows[1], 120, estimate)).toThrow(/Rouvrez/);
-        for (const invalid of [null, {}, { ...estimate, method: 'guess' }, { ...estimate, sourceDate: '2025-07-01' }, { ...estimate, sourceValue: -1 }]) {
+        for (const invalid of [null, {}, { ...estimate, method: 'guess' }, { ...estimate, sourceDate: '2025-07-01' }, { ...estimate, sourceValue: -1 }, { ...estimate, sourceAfterDayFlows: true }, { ...estimate, sourceAfterDayFlows: false }]) {
             expect(() => validatePortfolio(pockets, [{ ...flows[1], valeurAvant: 120, valeurAvantEstimation: invalid }], [])).toThrow(/estimation/);
         }
     });
@@ -392,6 +499,14 @@ describe('pocket closure', () => {
         expect(() => assertPocketWritable([pocket], pocket.id)).toThrow();
         expect(() => assertPocketWritable([], pocket.id)).toThrow();
         expect(() => assertPocketWritable([{ ...pocket, closedAt: undefined }], pocket.id)).not.toThrow();
+    });
+
+    it('requires a confirmed zero rather than an estimated terminal balance', () => {
+        const estimated = [...valuations.slice(0, -1), { ...valuations.at(-1)!, estimee: true }];
+        expect(() => validatePocketClosures([pocket], transactions, estimated)).toThrow(/confirmée/);
+        expect(() => validatePortfolio([pocket], transactions, estimated)).toThrow(/confirmée/);
+        expect(() => readPortfolioData({ p: [pocket], t: transactions, v: estimated })).toThrow(/confirmée/);
+        expect(() => validatePocketClosures([pocket], transactions, [...estimated, { ...valuations.at(-1)!, id: 'confirmed-zero' }])).not.toThrow();
     });
 
     it.each([120, 80, 0])('preserves the final result after withdrawing %s', amount => {

@@ -28,6 +28,7 @@ export type WithdrawalValueEstimate = {
     method: 'after-withdrawal' | 'previous-balance';
     sourceDate: string;
     sourceValue: number;
+    sourceAfterDayFlows?: true;
 };
 
 export type Valuation = {
@@ -228,8 +229,8 @@ export function validatePocketClosures(
             throw new Error('Des opérations existent après la date de clôture.');
         }
         const terminal = lastItem(pocketValues);
-        if (!terminal || terminal.date !== date || terminal.valeur !== 0) {
-            throw new Error('Enregistrez une valorisation finale à 0 € à la date de clôture, après les retraits réellement reçus.');
+        if (!terminal || terminal.date !== date || terminal.valeur !== 0 || terminal.estimee) {
+            throw new Error('Enregistrez une valorisation finale confirmée à 0 € à la date de clôture, après les retraits réellement reçus.');
         }
     }
 }
@@ -244,6 +245,17 @@ export function completeWithdrawalValue(
     pockets: Pocket[], transactions: Transaction[], valuations: Valuation[], transaction: Transaction, valueBefore: number,
     estimate?: WithdrawalValueEstimate,
 ): Transaction[] {
+    const repaired = completeWithdrawalHistory(pockets, transactions, valuations, transaction, valueBefore, estimate);
+    if (repaired.valuations.some((valuation, index) => valuation !== valuations[index])) {
+        throw new Error('La correction doit aussi mettre à jour les soldes estimés liés aux mouvements suivants.');
+    }
+    return repaired.transactions;
+}
+
+export function completeWithdrawalHistory(
+    pockets: Pocket[], transactions: Transaction[], valuations: Valuation[], transaction: Transaction, valueBefore: number,
+    estimate?: WithdrawalValueEstimate,
+): { transactions: Transaction[]; valuations: Valuation[] } {
     const index = transactions.indexOf(transaction);
     if (index < 0) throw new Error('Cette transaction a changé. Fermez puis rouvrez la correction.');
     assertPocketWritable(pockets, transaction.pocheId);
@@ -253,29 +265,79 @@ export function completeWithdrawalValue(
         throw new Error('La valeur avant retrait doit être au moins égale au montant retiré.');
     }
     if (estimate) {
-        const proposed = estimateWithdrawalValue(transactions, valuations, transaction);
+        const proposed = estimateWithdrawalValue(transactions, valuations, transaction, estimate.sourceAfterDayFlows === true);
         if (!proposed || Math.round(valueBefore * 100) !== Math.round(proposed.valueBefore * 100)
-            || estimate.method !== proposed.method || estimate.sourceDate !== proposed.sourceDate || estimate.sourceValue !== proposed.sourceValue) {
+            || estimate.method !== proposed.method || estimate.sourceDate !== proposed.sourceDate || estimate.sourceValue !== proposed.sourceValue
+            || estimate.sourceAfterDayFlows !== proposed.sourceAfterDayFlows) {
             throw new Error('L’estimation a changé. Fermez puis rouvrez la correction.');
         }
     }
     const next = transactions.map((entry, entryIndex) => {
         if (entryIndex !== index) return entry;
         const completed = { ...entry, valeurAvant: Math.round(valueBefore * 100) / 100 };
-        if (estimate) completed.valeurAvantEstimation = { method: estimate.method, sourceDate: estimate.sourceDate, sourceValue: estimate.sourceValue };
+        delete completed.valeurAvantEstimee;
+        if (estimate) completed.valeurAvantEstimation = { method: estimate.method, sourceDate: estimate.sourceDate, sourceValue: estimate.sourceValue, ...(estimate.sourceAfterDayFlows ? { sourceAfterDayFlows: true as const } : {}) };
         else delete completed.valeurAvantEstimation;
         return completed;
     });
-    validatePortfolio(pockets, next, valuations);
-    return next;
+    let nextValues = valuations;
+    const updateSnapshot = (entry: Transaction, afterCents: number, estimated: boolean) => {
+        nextValues = nextValues.map(valuation => valuation.transactionId && valuation.transactionId === entry.id && valuation.estimee
+            && (Math.round(valuation.valeur * 100) !== afterCents || !!valuation.estimee !== estimated)
+            ? { ...valuation, valeur: afterCents / 100, estimee: estimated } : valuation);
+    };
+    const events = [
+        ...next.flatMap((entry, entryIndex) => entry.pocheId === transaction.pocheId
+            ? [{ date: entry.timestamp, order: entryIndex * 2, transactionIndex: entryIndex, valuationIndex: -1 }] : []),
+        ...valuations.flatMap((valuation, valuationIndex) => valuation.pocheId === transaction.pocheId
+            ? [{ date: valuation.date, order: valuation.transactionId ? next.findIndex(entry => entry.id === valuation.transactionId) * 2 + 1 : next.length * 2 + valuationIndex, transactionIndex: -1, valuationIndex }] : []),
+    ].sort((left, right) => left.date.localeCompare(right.date) || left.order - right.order);
+    let affected = false;
+    let balanceCents = 0;
+    for (const event of events) {
+        if (event.transactionIndex === index) {
+            affected = true;
+            balanceCents = Math.round(next[index].valeurAvant! * 100) - Math.round(transaction.montant * 100);
+            updateSnapshot(next[index], balanceCents, !!estimate);
+            continue;
+        }
+        if (!affected) continue;
+        if (event.valuationIndex >= 0) {
+            const valuation = nextValues[event.valuationIndex];
+            if (transaction.id && valuation.transactionId === transaction.id) continue;
+            if (!valuation.estimee) break;
+            if (!valuation.transactionId) throw new Error('Confirmez ou supprimez la valorisation estimée sans mouvement lié avant de corriger cet historique.');
+            continue;
+        }
+        const entry = next[event.transactionIndex];
+        if (entry.valeurAvant !== undefined && !entry.valeurAvantEstimee && !entry.valeurAvantEstimation) break;
+        if (entry.valeurAvantEstimee || entry.valeurAvantEstimation) {
+            const proposal = entry.valeurAvantEstimation ? estimateWithdrawalValue(next, nextValues, entry, entry.valeurAvantEstimation.sourceAfterDayFlows === true) : undefined;
+            if (entry.valeurAvantEstimation && !proposal) throw new Error('La correction rend une estimation suivante impossible. Confirmez d’abord sa valeur historique.');
+            const beforeCents = proposal ? Math.round(proposal.valueBefore * 100) : balanceCents;
+            const afterCents = beforeCents + (entry.type === 'apport' ? 1 : -1) * Math.round(entry.montant * 100);
+            if (!Number.isSafeInteger(beforeCents) || beforeCents < 0 || !Number.isSafeInteger(afterCents) || afterCents < 0) {
+                throw new Error('La correction rend un solde estimé suivant insuffisant. Actualisez ce solde avant de corriger cet historique.');
+            }
+            next[event.transactionIndex] = { ...entry, valeurAvant: beforeCents / 100, ...(proposal ? { valeurAvantEstimation: { method: proposal.method, sourceDate: proposal.sourceDate, sourceValue: proposal.sourceValue, ...(proposal.sourceAfterDayFlows ? { sourceAfterDayFlows: true as const } : {}) } } : {}) };
+            balanceCents = afterCents;
+            updateSnapshot(next[event.transactionIndex], balanceCents, true);
+        } else {
+            balanceCents += (entry.type === 'apport' ? 1 : -1) * Math.round(entry.montant * 100);
+            if (!Number.isSafeInteger(balanceCents) || balanceCents < 0) throw new Error('La correction rend un solde intermédiaire insuffisant. Confirmez d’abord les mouvements suivants.');
+        }
+    }
+    validatePortfolio(pockets, next, nextValues);
+    return { transactions: next, valuations: nextValues };
 }
 
-export function estimateWithdrawalValue(transactions: Transaction[], valuations: Valuation[], transaction: Transaction): WithdrawalValueEstimate | null {
+export function estimateWithdrawalValue(transactions: Transaction[], valuations: Valuation[], transaction: Transaction, sameDayAfterConfirmed = false): WithdrawalValueEstimate | null {
     if (!transactions.includes(transaction) || transaction.type !== 'retrait') return null;
     const ordered = getPocketTransactions(transaction.pocheId, transactions).sort((left, right) => left.timestamp.localeCompare(right.timestamp));
     const targetIndex = ordered.indexOf(transaction);
     const values = getPocketValuations(transaction.pocheId, valuations).filter(valuation => !valuation.estimee);
     const after = lastItem(values.filter(valuation => valuation.date === transaction.timestamp));
+    if (after && !after.transactionId && !sameDayAfterConfirmed) return null;
     const afterIndex = after?.transactionId
         ? ordered.findIndex(entry => entry.id === after.transactionId)
         : ordered.reduce((lastIndex, entry, entryIndex) => entry.timestamp === transaction.timestamp ? entryIndex : lastIndex, -1);
@@ -285,8 +347,15 @@ export function estimateWithdrawalValue(transactions: Transaction[], valuations:
         return { valueBefore: valueCents / 100, method, sourceDate, sourceValue };
     };
     if (after && afterIndex >= targetIndex) {
-        const flows = ordered.slice(targetIndex, afterIndex + 1).reduce((total, entry) => total + signedCents(entry), 0);
-        return result(Math.round(after.valeur * 100) - flows, 'after-withdrawal', after.date, after.valeur);
+        let balanceCents = Math.round(after.valeur * 100);
+        let targetBeforeCents = 0;
+        for (let entryIndex = afterIndex; entryIndex >= 0 && ordered[entryIndex].timestamp === after.date; entryIndex--) {
+            balanceCents -= signedCents(ordered[entryIndex]);
+            if (!Number.isSafeInteger(balanceCents) || balanceCents < 0) return null;
+            if (entryIndex === targetIndex) targetBeforeCents = balanceCents;
+        }
+        const proposal = result(targetBeforeCents, 'after-withdrawal', after.date, after.valeur);
+        return proposal && !after.transactionId ? { ...proposal, sourceAfterDayFlows: true } : proposal;
     }
     const before = lastItem(values.filter(valuation => valuation.date < transaction.timestamp));
     if (!before) return null;
@@ -343,7 +412,8 @@ export function validatePortfolio(pockets: unknown, transactions: unknown, valua
             if (transaction.type !== 'retrait' || transaction.valeurAvant === undefined || !record(estimate)
                 || !['after-withdrawal', 'previous-balance'].includes(estimate.method as string)
                 || !validDate(estimate.sourceDate) || estimate.sourceDate > transaction.timestamp || !money(estimate.sourceValue)
-                || estimate.method === 'after-withdrawal' && estimate.sourceDate !== transaction.timestamp) {
+                || estimate.method === 'after-withdrawal' && estimate.sourceDate !== transaction.timestamp
+                || estimate.sourceAfterDayFlows !== undefined && (estimate.sourceAfterDayFlows !== true || estimate.method !== 'after-withdrawal')) {
                 throw new Error('Provenance de l’estimation historique invalide.');
             }
         }
