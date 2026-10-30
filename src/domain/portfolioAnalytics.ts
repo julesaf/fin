@@ -19,6 +19,15 @@ export type Transaction = {
     timestamp: string;
     commentaire?: string;
     valeurAvant?: number;
+    valeurAvantEstimation?: Omit<WithdrawalValueEstimate, 'valueBefore'>;
+    valeurAvantEstimee?: boolean;
+};
+
+export type WithdrawalValueEstimate = {
+    valueBefore: number;
+    method: 'after-withdrawal' | 'previous-balance';
+    sourceDate: string;
+    sourceValue: number;
 };
 
 export type Valuation = {
@@ -28,6 +37,7 @@ export type Valuation = {
     date: string;
     commentaire?: string;
     transactionId?: string;
+    estimee?: boolean;
 };
 
 export type CashFlow = {
@@ -41,6 +51,9 @@ export type PocketMetrics = {
     capital: number;
     valActu: number;
     valueEstimated: boolean;
+    latentEstimated: boolean;
+    realizedEstimated: boolean;
+    dietzEstimated: boolean;
     gainTotal: number;
     gainNonRealise: number | null;
     gainLatent: number | null;
@@ -55,11 +68,13 @@ export type PortfolioMetrics = {
     tg: number;
     latent: number | null;
     valueEstimated: boolean;
+    latentEstimated: boolean;
     xirr: number | null;
 };
 
 export type PerformancePoint = {
     date: string;
+    estimated: boolean;
     v: number;
     c: number;
     p: number;
@@ -84,6 +99,7 @@ export type AnnualPerformanceRow = {
     cumPct: number | null;
     capitalEnd: number;
     valueEstimated: boolean;
+    performanceEstimated: boolean;
 };
 
 const CASH_FLOW_TYPES = new Set<TransactionType>(['apport', 'retrait']);
@@ -143,6 +159,12 @@ export function getPocketValueAtDate(pocketId: string, transactions: Transaction
     return Math.max(0, valueCents / 100);
 }
 
+export function isPocketValueEstimatedAtDate(pocketId: string, transactions: Transaction[], valuations: Valuation[], date: string): boolean {
+    const latest = lastItem(getPocketValuations(pocketId, valuations).filter(valuation => valuation.date <= date));
+    return !!latest?.estimee || getPocketTransactions(pocketId, transactions).some(transaction => transaction.timestamp <= date
+        && (!latest || transaction.timestamp > latest.date));
+}
+
 export function assertHistoryEditable(pocketId: string, date: string, valuations: Valuation[], sourceIndex = Infinity): void {
     if (valuations.some((valuation, index) => valuation.pocheId === pocketId && valuation.transactionId
         && (valuation.date > date || valuation.date === date && index > sourceIndex))) {
@@ -152,7 +174,7 @@ export function assertHistoryEditable(pocketId: string, date: string, valuations
 
 export function prepareContribution(
     pocketId: string, amount: number, date: string, valuations: Valuation[], transactions: Transaction[] = [], updatedAfter?: number,
-): { valueBefore: number; valueAfter: number } {
+): { valueBefore: number; valueAfter: number; estimated?: boolean } {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date))
         || new Date(date).toISOString().slice(0, 10) !== date) throw new Error('Choisissez une date d’apport valide.');
     if (date > localToday()) throw new Error('La date d’apport ne peut pas être future.');
@@ -161,12 +183,13 @@ export function prepareContribution(
     const amountCents = Math.round(amount * 100);
     const afterCents = Math.round((updatedAfter ?? getPocketValueAtDate(pocketId, transactions, valuations, date) + amountCents / 100) * 100);
     if (!Number.isFinite(afterCents) || afterCents < amountCents) throw new Error('La valeur après apport doit inclure le montant versé.');
-    return { valueBefore: (afterCents - amountCents) / 100, valueAfter: afterCents / 100 };
+    const estimated = updatedAfter === undefined && isPocketValueEstimatedAtDate(pocketId, transactions, valuations, date);
+    return { valueBefore: (afterCents - amountCents) / 100, valueAfter: afterCents / 100, ...(estimated ? { estimated: true } : {}) };
 }
 
 export function prepareWithdrawal(
     pocketId: string, amount: number, date: string, valuations: Valuation[], updatedValue?: number, transactions: Transaction[] = [],
-): { valueBefore: number; valueAfter: number } {
+): { valueBefore: number; valueAfter: number; estimated?: boolean } {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date))
         || new Date(date).toISOString().slice(0, 10) !== date) {
         throw new Error('Choisissez une date de retrait valide.');
@@ -184,7 +207,8 @@ export function prepareWithdrawal(
     if (withdrawalCents > availableCents) {
         throw new Error('Le retrait dépasse la valeur de la poche. Actualisez la valorisation avant retrait.');
     }
-    return { valueBefore: availableCents / 100, valueAfter: (availableCents - withdrawalCents) / 100 };
+    const estimated = updatedValue === undefined && isPocketValueEstimatedAtDate(pocketId, transactions, valuations, date);
+    return { valueBefore: availableCents / 100, valueAfter: (availableCents - withdrawalCents) / 100, ...(estimated ? { estimated: true } : {}) };
 }
 
 export function validatePocketClosures(
@@ -218,18 +242,72 @@ export function assertPocketWritable(pockets: Pocket[], pocketId: string): void 
 
 export function completeWithdrawalValue(
     pockets: Pocket[], transactions: Transaction[], valuations: Valuation[], transaction: Transaction, valueBefore: number,
+    estimate?: WithdrawalValueEstimate,
 ): Transaction[] {
     const index = transactions.indexOf(transaction);
     if (index < 0) throw new Error('Cette transaction a changé. Fermez puis rouvrez la correction.');
     assertPocketWritable(pockets, transaction.pocheId);
-    if (transaction.type !== 'retrait' || transaction.valeurAvant !== undefined) throw new Error('Seul un retrait sans valeur avant retrait peut être complété.');
+    if (transaction.type !== 'retrait' || transaction.valeurAvant !== undefined && !transaction.valeurAvantEstimation) throw new Error('Seul un retrait sans valeur avant retrait ou avec une estimation peut être complété.');
     if (!Number.isFinite(valueBefore) || valueBefore <= 0 || valueBefore > Number.MAX_SAFE_INTEGER / 100
         || Math.round(valueBefore * 100) < Math.round(transaction.montant * 100)) {
         throw new Error('La valeur avant retrait doit être au moins égale au montant retiré.');
     }
-    const next = transactions.map((entry, entryIndex) => entryIndex === index ? { ...entry, valeurAvant: Math.round(valueBefore * 100) / 100 } : entry);
+    if (estimate) {
+        const proposed = estimateWithdrawalValue(transactions, valuations, transaction);
+        if (!proposed || Math.round(valueBefore * 100) !== Math.round(proposed.valueBefore * 100)
+            || estimate.method !== proposed.method || estimate.sourceDate !== proposed.sourceDate || estimate.sourceValue !== proposed.sourceValue) {
+            throw new Error('L’estimation a changé. Fermez puis rouvrez la correction.');
+        }
+    }
+    const next = transactions.map((entry, entryIndex) => {
+        if (entryIndex !== index) return entry;
+        const completed = { ...entry, valeurAvant: Math.round(valueBefore * 100) / 100 };
+        if (estimate) completed.valeurAvantEstimation = { method: estimate.method, sourceDate: estimate.sourceDate, sourceValue: estimate.sourceValue };
+        else delete completed.valeurAvantEstimation;
+        return completed;
+    });
     validatePortfolio(pockets, next, valuations);
     return next;
+}
+
+export function estimateWithdrawalValue(transactions: Transaction[], valuations: Valuation[], transaction: Transaction): WithdrawalValueEstimate | null {
+    if (!transactions.includes(transaction) || transaction.type !== 'retrait') return null;
+    const ordered = getPocketTransactions(transaction.pocheId, transactions).sort((left, right) => left.timestamp.localeCompare(right.timestamp));
+    const targetIndex = ordered.indexOf(transaction);
+    const values = getPocketValuations(transaction.pocheId, valuations).filter(valuation => !valuation.estimee);
+    const after = lastItem(values.filter(valuation => valuation.date === transaction.timestamp));
+    const afterIndex = after?.transactionId
+        ? ordered.findIndex(entry => entry.id === after.transactionId)
+        : ordered.reduce((lastIndex, entry, entryIndex) => entry.timestamp === transaction.timestamp ? entryIndex : lastIndex, -1);
+    const signedCents = (entry: Transaction) => (entry.type === 'apport' ? 1 : -1) * Math.round(entry.montant * 100);
+    const result = (valueCents: number, method: WithdrawalValueEstimate['method'], sourceDate: string, sourceValue: number): WithdrawalValueEstimate | null => {
+        if (!Number.isSafeInteger(valueCents) || valueCents < Math.round(transaction.montant * 100)) return null;
+        return { valueBefore: valueCents / 100, method, sourceDate, sourceValue };
+    };
+    if (after && afterIndex >= targetIndex) {
+        const flows = ordered.slice(targetIndex, afterIndex + 1).reduce((total, entry) => total + signedCents(entry), 0);
+        return result(Math.round(after.valeur * 100) - flows, 'after-withdrawal', after.date, after.valeur);
+    }
+    const before = lastItem(values.filter(valuation => valuation.date < transaction.timestamp));
+    if (!before) return null;
+    let valueCents = Math.round(before.valeur * 100);
+    let sourceDate = before.date;
+    let sourceValue = before.valeur;
+    for (const entry of ordered.slice(0, targetIndex).filter(entry => entry.timestamp > before.date)) {
+        if (entry.valeurAvant !== undefined) {
+            valueCents = Math.round(entry.valeurAvant * 100);
+            if (entry.valeurAvantEstimation) {
+                sourceDate = entry.valeurAvantEstimation.sourceDate;
+                sourceValue = entry.valeurAvantEstimation.sourceValue;
+            } else if (!entry.valeurAvantEstimee) {
+                sourceDate = entry.timestamp;
+                sourceValue = entry.valeurAvant;
+            }
+        }
+        valueCents += signedCents(entry);
+        if (valueCents < 0) return null;
+    }
+    return result(valueCents, 'previous-balance', sourceDate, sourceValue);
 }
 
 export function validatePortfolio(pockets: unknown, transactions: unknown, valuations: unknown): void {
@@ -260,6 +338,17 @@ export function validatePortfolio(pockets: unknown, transactions: unknown, valua
         }
         if (transaction.valeurAvant !== undefined && (!money(transaction.valeurAvant)
             || transaction.type === 'retrait' && Math.round(transaction.valeurAvant * 100) < Math.round(transaction.montant * 100))) throw new Error('Valeur avant mouvement invalide.');
+        if (transaction.valeurAvantEstimation !== undefined) {
+            const estimate = transaction.valeurAvantEstimation;
+            if (transaction.type !== 'retrait' || transaction.valeurAvant === undefined || !record(estimate)
+                || !['after-withdrawal', 'previous-balance'].includes(estimate.method as string)
+                || !validDate(estimate.sourceDate) || estimate.sourceDate > transaction.timestamp || !money(estimate.sourceValue)
+                || estimate.method === 'after-withdrawal' && estimate.sourceDate !== transaction.timestamp) {
+                throw new Error('Provenance de l’estimation historique invalide.');
+            }
+        }
+        if (transaction.valeurAvantEstimee !== undefined && (typeof transaction.valeurAvantEstimee !== 'boolean'
+            || transaction.valeurAvant === undefined)) throw new Error('Statut de la valeur avant mouvement invalide.');
         if (transaction.commentaire !== undefined && typeof transaction.commentaire !== 'string') throw new Error('Commentaire de transaction invalide.');
     }
     const valuationIds = new Set<string>(), linkedIds = new Set<string>();
@@ -267,6 +356,7 @@ export function validatePortfolio(pockets: unknown, transactions: unknown, valua
         if (!record(valuation) || !validId(valuation.pocheId) || !pocketIds.has(valuation.pocheId)) throw new Error('Une valorisation référence une poche inexistante.');
         if (!money(valuation.valeur) || !validDate(valuation.date)) throw new Error('Montant ou date de valorisation invalide.');
         if (valuation.date > today) throw new Error('La date de valorisation ne peut pas être future.');
+        if (valuation.estimee !== undefined && typeof valuation.estimee !== 'boolean') throw new Error('Statut de valorisation invalide.');
         if (valuation.id !== undefined) {
             if (!validId(valuation.id) || valuationIds.has(valuation.id)) throw new Error('Identifiant de valorisation invalide ou dupliqué.');
             valuationIds.add(valuation.id);
@@ -279,6 +369,7 @@ export function validatePortfolio(pockets: unknown, transactions: unknown, valua
             if (!transaction || transaction.pocheId !== valuation.pocheId || transaction.timestamp !== valuation.date || transaction.valeurAvant === undefined) throw new Error('La valorisation liée ne correspond pas à sa transaction.');
             const expected = Math.round(transaction.valeurAvant * 100) + (transaction.type === 'apport' ? 1 : -1) * Math.round(transaction.montant * 100);
             if (Math.round(valuation.valeur * 100) !== expected) throw new Error('Le solde lié au mouvement est incohérent.');
+            if (!!valuation.estimee !== !!(transaction.valeurAvantEstimee || transaction.valeurAvantEstimation)) throw new Error('Le statut estimé du solde lié est incohérent.');
         }
     }
     validatePocketClosures(pockets as Pocket[], transactions as Transaction[], valuations as Valuation[]);
@@ -474,10 +565,9 @@ export function getPocketMetrics(pocketId: string, transactions: Transaction[], 
     const retraits = sumTransactions(pocketTransactions, 'retrait');
 
     const capital = apports - retraits;
-    const lastValuation = lastItem(pocketValuations);
     const endDate = [...pocketValuations.map(valuation => valuation.date), ...pocketTransactions.map(transaction => transaction.timestamp)].sort().pop();
     const valActu = endDate ? getPocketValueAtDate(pocketId, transactions, valuations, endDate) : 0;
-    const valueEstimated = pocketTransactions.some(transaction => !lastValuation || transaction.timestamp > lastValuation.date);
+    const valueEstimated = endDate ? isPocketValueEstimatedAtDate(pocketId, transactions, valuations, endDate) : false;
 
     const xirrCashFlows = toXirrCashFlows(pocketTransactions);
     if (valActu > 0 && xirrCashFlows.length && endDate) {
@@ -504,15 +594,18 @@ export function getPocketMetrics(pocketId: string, transactions: Transaction[], 
 
     const gainTotal = valActu - capital;
     let remainingCost: number | null = 0;
+    let costEstimated = false;
     for (const transaction of [...pocketTransactions].sort((a, b) => a.timestamp.localeCompare(b.timestamp))) {
+        const beforeEstimated = !!(transaction.valeurAvantEstimation || transaction.valeurAvantEstimee);
         if (transaction.type === 'apport') {
-            if (transaction.valeurAvant === 0) remainingCost = 0;
+            if (transaction.valeurAvant === 0) { remainingCost = 0; costEstimated = beforeEstimated; }
             if (remainingCost !== null) remainingCost += transaction.montant;
         } else if (transaction.valeurAvant !== undefined && Math.round(transaction.valeurAvant * 100) === Math.round(transaction.montant * 100)) {
             remainingCost = 0;
+            costEstimated = beforeEstimated;
         } else if (remainingCost !== null) {
             if (transaction.valeurAvant === undefined || transaction.valeurAvant <= 0) remainingCost = null;
-            else remainingCost *= Math.max(0, 1 - transaction.montant / transaction.valeurAvant);
+            else { remainingCost *= Math.max(0, 1 - transaction.montant / transaction.valeurAvant); costEstimated ||= beforeEstimated; }
         }
     }
     const gainNonRealise = valActu === 0 ? 0 : remainingCost === null ? null : valActu - remainingCost;
@@ -523,6 +616,9 @@ export function getPocketMetrics(pocketId: string, transactions: Transaction[], 
         capital,
         valActu,
         valueEstimated,
+        latentEstimated: gainNonRealise !== null && (costEstimated || valueEstimated),
+        realizedEstimated: gainNonRealise !== null && costEstimated,
+        dietzEstimated: dietz !== null && (valueEstimated || isPocketValueEstimatedAtDate(pocketId, transactions, valuations, pocketValuations[0].date)),
         gainTotal,
         gainNonRealise,
         gainLatent: gainNonRealise,
@@ -565,6 +661,7 @@ export function getPortfolioMetrics(
         tg: pocketMetrics.reduce((sum, pocket) => sum + pocket.gainTotal, 0),
         latent,
         valueEstimated: pocketMetrics.some(pocket => pocket.valueEstimated),
+        latentEstimated: latent !== null && pocketMetrics.some(pocket => pocket.latentEstimated),
         xirr: xirrCashFlows.length >= 2 ? calculateXirr(xirrCashFlows) : null,
     };
 }
@@ -590,6 +687,7 @@ export function buildPortfolioHistory(
 
         return {
             date: date.slice(0, 7),
+            estimated: pockets.some(pocket => isPocketValueEstimatedAtDate(pocket.id, transactions, valuations, date)),
             v: value,
             c: capital,
             p: performance,
@@ -642,11 +740,8 @@ export function getAnnualPerformanceRows(
         const endDate = `${year}-12-31`;
         const bmv = valueAtDate(`${year - 1}-12-31`);
         const emv = valueAtDate(endDate);
-        const valueEstimated = pocketIds.some(id => {
-            const latest = lastItem(getPocketValuations(id, valuations).filter(valuation => valuation.date <= endDate));
-            return scopedTransactions.some(transaction => transaction.pocheId === id && transaction.timestamp <= endDate
-                && (!latest || transaction.timestamp > latest.date));
-        });
+        const valueEstimated = pocketIds.some(id => isPocketValueEstimatedAtDate(id, transactions, valuations, endDate));
+        const performanceEstimated = valueEstimated || pocketIds.some(id => isPocketValueEstimatedAtDate(id, transactions, valuations, `${year - 1}-12-31`));
 
         const yearTransactions = scopedTransactions.filter(
             transaction => transaction.timestamp >= startDate && transaction.timestamp <= endDate,
@@ -686,6 +781,7 @@ export function getAnnualPerformanceRows(
                 cumPct,
                 capitalEnd,
                 valueEstimated,
+                performanceEstimated,
             },
         ];
     }, []);

@@ -29,6 +29,7 @@ import {
     buildPortfolioHistory,
     calculatePerformanceAtDate,
     completeWithdrawalValue,
+    estimateWithdrawalValue,
     getAnnualPerformanceRows,
     getPocketMetrics,
     getPortfolioMetrics,
@@ -39,12 +40,14 @@ import {
     validatePocketClosures,
     localToday,
     getPocketValueAtDate,
+    isPocketValueEstimatedAtDate,
     prepareContribution,
     prepareWithdrawal,
     type Pocket,
     type PocketMetrics,
     type Transaction,
     type Valuation,
+    type WithdrawalValueEstimate,
 } from "../domain/portfolioAnalytics";
 import { createDarkTheme, createLightTheme } from "../theme/theme";
 import { simulate, createSimulationConfig, createSimulationPocket, readSimulationConfig, simulationCsv, type SimulationConfig, type SimulationPocket, type MonteCarloResult } from '../domain/simulation';
@@ -443,10 +446,10 @@ function AnnualTable({ pid, txs, vals }) {
                             {!isMobile && <td style={{ ...tdR, color: T.t2 }}>{r.bmv > 0 ? fEUR(r.bmv) : '–'}</td>}
                             <td style={{ ...tdR, fontWeight: 600, color: ACC }}>{fEUR(r.emv)}{r.valueEstimated && <div style={{ fontSize: '.6rem', color: T.t3 }}>Estimée</div>}</td>
                             <td style={{ ...tdR, color: r.netCF >= 0 ? T.t1 : AMB }}>{fEUR(r.netCF)}</td>
-                            <td style={{ ...tdR, fontWeight: 600, color: gc(r.perfE) }}>{fEURS(r.perfE)}</td>
-                            <td style={{ ...tdR, fontWeight: 700, color: gc(r.perfPct) }}>{fPctS(r.perfPct)}</td>
-                            {!isMobile && <td style={{ ...tdR, color: gc(r.cumE) }}>{fEURS(r.cumE)}</td>}
-                            <td style={{ ...tdR, fontWeight: 700, color: gc(r.cumPct) }}>{fPctS(r.cumPct)}</td>
+                            <td style={{ ...tdR, fontWeight: 600, color: gc(r.perfE) }}>{fEURS(r.perfE)}{r.performanceEstimated && <div style={{ fontSize: '.6rem', color: T.t3 }}>Estimée</div>}</td>
+                            <td style={{ ...tdR, fontWeight: 700, color: gc(r.perfPct) }}>{fPctS(r.perfPct)}{r.performanceEstimated && <div style={{ fontSize: '.6rem', color: T.t3 }}>Estimée</div>}</td>
+                            {!isMobile && <td style={{ ...tdR, color: gc(r.cumE) }}>{fEURS(r.cumE)}{r.valueEstimated && <div style={{ fontSize: '.6rem', color: T.t3 }}>Estimée</div>}</td>}
+                            <td style={{ ...tdR, fontWeight: 700, color: gc(r.cumPct) }}>{fPctS(r.cumPct)}{r.valueEstimated && r.cumPct !== null && <div style={{ fontSize: '.6rem', color: T.t3 }}>Estimée</div>}</td>
                         </TRow>
                     ))}
                 </tbody>
@@ -531,6 +534,7 @@ function ModalSaisie({ poches, txs, vals, defPoche, onSave, onClose }) {
     const known = vals.filter(v => v.pocheId === pocheId && v.date <= date).sort((a, b) => a.date.localeCompare(b.date)).at(-1);
     const hasKnownValue = !!known || txs.some(transaction => transaction.pocheId === pocheId && transaction.timestamp <= date);
     const knownValue = getPocketValueAtDate(pocheId, txs, vals, date);
+    const knownValueEstimated = isPocketValueEstimatedAtDate(pocheId, txs, vals, date);
     let movement = null, entryError = '';
     try {
         assertHistoryEditable(pocheId, date, vals);
@@ -542,7 +546,7 @@ function ModalSaisie({ poches, txs, vals, defPoche, onSave, onClose }) {
     const ok = !!date && !entryError && (valeur === '' || hasVal) && poches.some(p => p.id === pocheId) && (withdrawalMode ? hasTx && !!movement : hasTx && !!movement || montant === '' && hasVal);
     const status = withdrawalMode ? movement ? 'Retrait + valeur restante' : 'Retrait à renseigner' : hasTx ? 'Apport + valeur actualisée' : hasVal ? 'Valorisation uniquement' : 'Remplissez au moins un champ';
     const resetBefore = () => { setBeforeValue(''); setRevalue(false); };
-    const save = () => { if (!ok) return; onSave(pocheId, hasTx ? { type, montant: Number(montant), commentaire: note.trim() } : null, movement ? movement.valueAfter : hasVal ? Number(valeur) : null, date, note.trim(), withdrawalMode && beforeValue !== '' ? Number(beforeValue) : undefined); };
+    const save = () => { if (!ok) return; onSave(pocheId, hasTx ? { type, montant: Number(montant), commentaire: note.trim() } : null, !withdrawalMode && hasVal ? Number(valeur) : null, date, note.trim(), withdrawalMode && beforeValue !== '' ? Number(beforeValue) : undefined); };
     return (
         <Sheet title="Nouvelle saisie" onClose={onClose}>
             {!poches.length && <p role="status" style={{ color: T.t2 }}>Aucune poche active.</p>}
@@ -561,17 +565,17 @@ function ModalSaisie({ poches, txs, vals, defPoche, onSave, onClose }) {
                 <div style={{ background: T.s2, borderRadius: 10, padding: '.85rem', border: `1px solid ${T.brd}` }}>
                     {withdrawalMode ? <div style={{ display: 'grid', gap: 12 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                            <div style={{ color: T.t2, fontSize: '.74rem' }}>Valeur avant retrait <strong style={{ color: T.t1 }}>{hasKnownValue ? fEUR(knownValue) : 'Non renseignée'}</strong>{known && <div style={{ fontSize: '.65rem', color: T.t3 }}>Dernière observation au {fDt(known.date)}</div>}</div>
+                            <div style={{ color: T.t2, fontSize: '.74rem' }}>Valeur avant retrait{knownValueEstimated ? ' estimée' : ''} <strong style={{ color: T.t1 }}>{hasKnownValue ? fEUR(knownValue) : 'Non renseignée'}</strong>{known && <div style={{ fontSize: '.65rem', color: T.t3 }}>{known.estimee ? 'Dernier solde estimé' : 'Dernière observation'} au {fDt(known.date)}</div>}</div>
                             {!revalue && <Btn ghost onClick={() => setRevalue(true)}><Pencil size={12} />Actualiser</Btn>}
                         </div>
                         {(revalue || !hasKnownValue) && <div><Lbl ch="Valeur actualisée avant retrait (€)" /><Inp aria-label="Valeur actualisée avant retrait" type="number" min="0" step="0.01" value={beforeValue} onChange={e => setBeforeValue(e.target.value)} placeholder={hasKnownValue ? String(knownValue) : '0'} /></div>}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, borderTop: `1px solid ${T.brd}`, paddingTop: 10, flexWrap: 'wrap' }}>
-                            <span style={{ color: T.t2, fontSize: '.74rem' }}>Valeur après retrait</span><output aria-label="Valeur après retrait" style={{ color: T.t1, fontWeight: 700, minHeight: 24 }}>{movement ? fEUR(movement.valueAfter) : 'Non calculable'}</output>
+                            <span style={{ color: T.t2, fontSize: '.74rem' }}>Valeur après retrait{movement?.estimated ? ' estimée' : ''}</span><output aria-label="Valeur après retrait" style={{ color: T.t1, fontWeight: 700, minHeight: 24 }}>{movement ? fEUR(movement.valueAfter) : 'Non calculable'}</output>
                         </div>
                     </div> : <>
                         <div style={{ fontSize: '.58rem', color: T.t2, textTransform: 'uppercase', letterSpacing: '.1em', fontWeight: 600, marginBottom: '.65rem' }}>Valorisation <span style={{ fontWeight: 400, color: T.t3 }}>— optionnel</span></div>
                         <Lbl ch={hasTx ? 'Valeur actualisée après apport (€)' : 'Valeur totale de la poche (€)'} /><Inp aria-label="Valeur totale de la poche" type="number" min="0" step="0.01" value={valeur} onChange={e => setValeur(e.target.value)} placeholder={hasTx && movement ? String(movement.valueAfter) : '0'} />
-                        {hasTx && <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 10 }}><span style={{ color: T.t2, fontSize: '.74rem' }}>Valeur après apport</span><output aria-label="Valeur après apport" style={{ color: T.t1, fontWeight: 700, minHeight: 24 }}>{movement ? fEUR(movement.valueAfter) : 'Non calculable'}</output></div>}
+                        {hasTx && <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 10 }}><span style={{ color: T.t2, fontSize: '.74rem' }}>Valeur après apport{movement?.estimated ? ' estimée' : ''}</span><output aria-label="Valeur après apport" style={{ color: T.t1, fontWeight: 700, minHeight: 24 }}>{movement ? fEUR(movement.valueAfter) : 'Non calculable'}</output></div>}
                     </>}
                 </div>
                 {entryError && <div role="alert" style={{ color: AMB, fontSize: '.74rem' }}>{entryError}</div>}
@@ -658,27 +662,33 @@ function ModalRepairHistory({ poches, txs, pocheId, transaction, vals, onSave, o
     const fieldId = useId();
     const [selected, setSelected] = useState(transaction || null);
     const [value, setValue] = useState('');
+    const [entryMode, setEntryMode] = useState('confirmed');
+    const [estimateAccepted, setEstimateAccepted] = useState(false);
     const [saveError, setSaveError] = useState('');
     const [notice, setNotice] = useState('');
     const groups = poches.filter(pocket => !pocheId || pocket.id === pocheId).map(pocket => ({
         pocket,
-        entries: txs.map((entry, index) => ({ entry, index })).filter(({ entry }) => entry.pocheId === pocket.id && entry.type === 'retrait' && entry.valeurAvant === undefined)
+        entries: txs.map((entry, index) => ({ entry, index })).filter(({ entry }) => entry.pocheId === pocket.id && entry.type === 'retrait' && (entry.valeurAvant === undefined || entry.valeurAvantEstimation))
             .sort((a, b) => a.entry.timestamp.localeCompare(b.entry.timestamp)),
     })).filter(group => group.entries.length > 0);
     const pendingCount = groups.reduce((count, group) => count + group.entries.length, 0);
+    const estimatedCount = groups.reduce((count, group) => count + group.entries.filter(({ entry }) => entry.valeurAvantEstimation).length, 0);
     const selectedPocket = selected ? poches.find(pocket => pocket.id === selected.pocheId) : null;
+    const proposal = selected ? estimateWithdrawalValue(txs, vals, selected) : null;
+    const estimating = entryMode === 'estimated';
+    const chosenValue = estimating ? proposal?.valueBefore : value === '' ? undefined : Number(value);
     let valueError = '';
-    if (selected && value !== '') {
-        try { completeWithdrawalValue(poches, txs, vals, selected, Number(value)); }
+    if (selected && chosenValue !== undefined) {
+        try { completeWithdrawalValue(poches, txs, vals, selected, chosenValue, estimating ? proposal : undefined); }
         catch (err) { valueError = err.message; }
     }
-    const canSave = !!selected && !!selectedPocket && !selectedPocket.closedAt && value !== '' && !valueError;
-    const back = () => { setSelected(null); setValue(''); setSaveError(''); };
+    const canSave = !!selected && !!selectedPocket && !selectedPocket.closedAt && chosenValue !== undefined && !valueError && (!estimating || estimateAccepted);
+    const back = () => { setSelected(null); setValue(''); setSaveError(''); setEntryMode('confirmed'); setEstimateAccepted(false); };
     const save = () => {
         if (!canSave) return;
-        const error = onSave(selected, Number(value));
+        const error = onSave(selected, chosenValue, estimating ? proposal : undefined);
         if (error) { setSaveError(error); return; }
-        back(); setNotice('Valeur historique complétée.');
+        back(); setNotice(estimating ? 'Estimation historique acceptée.' : 'Valeur historique confirmée.');
     };
     return <Sheet title="Compléter l’historique" onClose={onClose}>
         <div role="dialog" aria-modal="true" aria-label="Compléter l’historique" style={{ display: 'grid', gap: 14, minWidth: 0, overflowWrap: 'anywhere' }}>
@@ -688,23 +698,35 @@ function ModalRepairHistory({ poches, txs, pocheId, transaction, vals, onSave, o
                     <strong style={{ color: T.t1, fontSize: '.85rem' }}>{selectedPocket?.nom || 'Poche'}</strong>
                     <div style={{ color: T.t2, fontSize: '.77rem' }}>Retrait du {fDt(selected.timestamp)} · {fEUR(selected.montant)}</div>
                     {selected.commentaire && <div style={{ color: T.t3, fontSize: '.72rem' }}>{selected.commentaire}</div>}
+                    {selected.valeurAvantEstimation && <div style={{ color: AMB, fontSize: '.73rem' }}>Valeur estimée enregistrée : {fEUR(selected.valeurAvant)} · source du {fDt(selected.valeurAvantEstimation.sourceDate)} : {fEUR(selected.valeurAvantEstimation.sourceValue)}</div>}
                 </div>
                 {selectedPocket?.closedAt ? <>
                     <div style={{ color: T.t2, fontSize: '.75rem' }}>Poche clôturée le {fDt(selectedPocket.closedAt)} · Opérations en lecture seule</div>
                     <Btn ghost onClick={() => onReopen(selectedPocket)}><RotateCcw size={13} />Rouvrir la poche</Btn>
-                </> : <div>
-                    <label htmlFor={fieldId} style={{ fontSize: '.73rem', color: T.t2, display: 'block', marginBottom: 6 }}>Valeur de la poche avant le retrait (€)</label>
-                    <Inp id={fieldId} aria-describedby={`${fieldId}-source${valueError || saveError ? ` ${fieldId}-error` : ''}`} autoFocus type="number" inputMode="decimal" min={selected.montant} step="0.01" value={value} onChange={event => { setValue(event.target.value); setSaveError(''); }} />
-                    <div id={`${fieldId}-source`} style={{ color: T.t3, fontSize: '.68rem', marginTop: 6 }}>Valeur historique figurant sur le relevé, avant ce retrait.</div>
-                </div>}
+                </> : <>
+                    <Segmented label="Origine de la valeur" value={entryMode} options={[{ value: 'confirmed', label: 'Valeur confirmée' }, { value: 'estimated', label: 'Valeur inconnue' }]} onChange={mode => { setEntryMode(mode); setEstimateAccepted(false); setSaveError(''); }} />
+                    {estimating ? proposal ? <div style={{ display: 'grid', gap: 10 }}>
+                        <div style={{ color: T.t2, fontSize: '.74rem' }}>Valeur avant retrait estimée <output aria-label="Valeur avant retrait estimée" style={{ display: 'block', color: T.t1, fontSize: '1.2rem', fontWeight: 700 }}>{fEUR(proposal.valueBefore)}</output></div>
+                        <div style={{ color: T.t2, fontSize: '.74rem', lineHeight: 1.6 }}>
+                            {proposal.method === 'after-withdrawal' ? 'Reconstitution depuis le solde du jour, en annulant le retrait et les mouvements suivants du même jour.' : 'Solde antérieur ajusté des apports et retraits jusqu’à ce retrait.'}
+                            <div>Source : {fEUR(proposal.sourceValue)} au {fDt(proposal.sourceDate)}.</div>
+                            <div style={{ color: AMB }}>Hypothèse : aucune variation de marché entre les mouvements. Ce montant n’est pas une valorisation confirmée.</div>
+                        </div>
+                        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, color: T.t2, fontSize: '.74rem', lineHeight: 1.5, cursor: 'pointer' }}><input type="checkbox" aria-label="J’accepte cette estimation" checked={estimateAccepted} onChange={event => setEstimateAccepted(event.target.checked)} style={{ marginTop: 3, flexShrink: 0, accentColor: ACC }} /><span>J’accepte cette estimation et son utilisation dans les indicateurs concernés.</span></label>
+                    </div> : <div role="status" style={{ color: AMB, fontSize: '.75rem', lineHeight: 1.6 }}>Estimation indisponible : aucun solde de référence suffisant ne permet un calcul cohérent. Aucune valeur ne sera inventée.</div> : <div>
+                        <label htmlFor={fieldId} style={{ fontSize: '.73rem', color: T.t2, display: 'block', marginBottom: 6 }}>Valeur de la poche avant le retrait (€)</label>
+                        <Inp id={fieldId} aria-describedby={`${fieldId}-source${valueError || saveError ? ` ${fieldId}-error` : ''}`} autoFocus type="number" inputMode="decimal" min={selected.montant} step="0.01" value={value} onChange={event => { setValue(event.target.value); setSaveError(''); }} />
+                        <div id={`${fieldId}-source`} style={{ color: T.t3, fontSize: '.68rem', marginTop: 6 }}>Valeur historique figurant sur le relevé, avant ce retrait.</div>
+                    </div>}
+                </>}
                 {(valueError || saveError) && <div id={`${fieldId}-error`} role="alert" style={{ color: AMB, fontSize: '.74rem' }}>{valueError || saveError}</div>}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
                     <Btn ghost onClick={back}>Annuler</Btn>
-                    {!selectedPocket?.closedAt && <Btn primary disabled={!canSave} onClick={save}><Check size={13} />Enregistrer</Btn>}
+                    {!selectedPocket?.closedAt && <Btn primary disabled={!canSave} onClick={save}><Check size={13} />{estimating ? 'Accepter l’estimation' : 'Enregistrer'}</Btn>}
                 </div>
             </> : <>
                 {notice && !persistenceNotice && <div role="status" style={{ color: GRN, fontSize: '.76rem', display: 'flex', alignItems: 'center', gap: 6 }}><Check size={14} />{notice}</div>}
-                <div style={{ color: T.t2, fontSize: '.76rem' }}>{pendingCount ? `${pendingCount} retrait(s) sans valeur avant retrait` : 'Tous les retraits sont complets.'}</div>
+                <div style={{ color: T.t2, fontSize: '.76rem' }}>{pendingCount ? `${pendingCount - estimatedCount} retrait(s) sans valeur · ${estimatedCount} estimation(s) à confirmer` : 'Tous les retraits ont une valeur confirmée.'}</div>
                 {groups.map(({ pocket, entries }) => <section key={pocket.id} aria-label={pocket.nom || 'Poche'} style={{ minWidth: 0 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', paddingBottom: 8, borderBottom: `1px solid ${T.brd}` }}>
                         <strong style={{ fontSize: '.82rem', color: T.t1 }}>{pocket.nom || 'Poche'}</strong>
@@ -712,8 +734,8 @@ function ModalRepairHistory({ poches, txs, pocheId, transaction, vals, onSave, o
                     </div>
                     {pocket.closedAt && <div style={{ color: T.t3, fontSize: '.7rem', paddingTop: 8 }}>Clôturée le {fDt(pocket.closedAt)} · Lecture seule</div>}
                     {entries.map(({ entry, index }) => <div key={index} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', alignItems: 'center', gap: 8, padding: '10px 0', borderBottom: `1px solid ${T.brd}` }}>
-                        <div style={{ minWidth: 0 }}><div style={{ fontSize: '.75rem', color: T.t1 }}>{fDt(entry.timestamp)} · {fEUR(entry.montant)}</div>{entry.commentaire && <div style={{ fontSize: '.68rem', color: T.t3, marginTop: 3 }}>{entry.commentaire}</div>}</div>
-                        <Btn ghost disabled={!!pocket.closedAt} aria-label={`Compléter le retrait du ${fDt(entry.timestamp)} de ${pocket.nom || 'la poche'} (${index + 1})`} onClick={() => { setSelected(entry); setValue(''); setSaveError(''); setNotice(''); }}><Pencil size={12} />Compléter</Btn>
+                        <div style={{ minWidth: 0 }}><div style={{ fontSize: '.75rem', color: T.t1 }}>{fDt(entry.timestamp)} · {fEUR(entry.montant)}</div>{entry.valeurAvantEstimation && <div style={{ color: AMB, fontSize: '.68rem', marginTop: 3 }}>Valeur estimée : {fEUR(entry.valeurAvant)}</div>}{entry.commentaire && <div style={{ fontSize: '.68rem', color: T.t3, marginTop: 3 }}>{entry.commentaire}</div>}</div>
+                        <Btn ghost disabled={!!pocket.closedAt} aria-label={`${entry.valeurAvantEstimation ? 'Confirmer la valeur du retrait' : 'Compléter le retrait'} du ${fDt(entry.timestamp)} de ${pocket.nom || 'la poche'} (${index + 1})`} onClick={() => { setSelected(entry); setValue(''); setSaveError(''); setNotice(''); setEntryMode('confirmed'); setEstimateAccepted(false); }}><Pencil size={12} />{entry.valeurAvantEstimation ? 'Confirmer' : 'Compléter'}</Btn>
                     </div>)}
                 </section>)}
             </>}
@@ -1019,6 +1041,7 @@ function HeroBanner({ gm, ps, vs, ts, onRepairHistory }) {
     const T = useT(); const { isMobile } = useBreakpoint();
     const [chartMode, setChartMode] = useState('value');
     const gainPct = gm.tc > 0 ? gm.tg / gm.tc : null;
+    const hasMissingWithdrawalValues = ts.some(entry => entry.type === 'retrait' && entry.valeurAvant === undefined);
     const histo = useMemo(() => buildPortfolioHistory(ps, ts, vs), [ps, ts, vs]);
     const dataKey = chartMode === 'value' ? 'v' : chartMode === 'pct' ? 'pct' : 'p';
     const chartLabel = chartMode === 'value' ? 'Valeur' : chartMode === 'pct' ? 'Perf. %' : 'Perf. €';
@@ -1035,11 +1058,11 @@ function HeroBanner({ gm, ps, vs, ts, onRepairHistory }) {
                     <div style={{ fontSize: isMobile ? '2.4rem' : '3rem', fontWeight: 800, color: T.t1, letterSpacing: '-.05em', lineHeight: 1, fontVariantNumeric: 'tabular-nums', marginBottom: 12 }}>{fEUR(gm.tv)}</div>
                     <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 10 }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '.24rem .6rem', borderRadius: 6, background: T.s2, border: `1px solid ${T.brd}` }}>
-                            <span style={{ fontSize: '.6rem', color: T.t3, fontWeight: 500 }}>Gain</span>
+                            <span style={{ fontSize: '.6rem', color: T.t3, fontWeight: 500 }}>Gain{gm.valueEstimated ? ' · estimé' : ''}</span>
                             <span style={{ fontSize: '.78rem', fontWeight: 700, color: gc(gainPct), fontVariantNumeric: 'tabular-nums' }}>{fPctS(gainPct)}</span>
                         </div>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '.24rem .6rem', borderRadius: 6, background: T.s2, border: `1px solid ${T.brd}` }}>
-                            <span style={{ fontSize: '.6rem', color: T.t3, fontWeight: 500, display: 'inline-flex', alignItems: 'center' }}>XIRR<InfoBtn {...XIRR_INFO} /></span>
+                            <span style={{ fontSize: '.6rem', color: T.t3, fontWeight: 500, display: 'inline-flex', alignItems: 'center' }}>XIRR{gm.valueEstimated && gm.xirr !== null ? ' · estimé' : ''}<InfoBtn {...XIRR_INFO} /></span>
                             <span style={{ fontSize: '.78rem', fontWeight: 700, color: gc(gm.xirr), fontVariantNumeric: 'tabular-nums' }}>{fPctS(gm.xirr)}</span>
                         </div>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '.24rem .6rem', borderRadius: 6, background: T.s2, border: `1px solid ${T.brd}` }}>
@@ -1047,13 +1070,13 @@ function HeroBanner({ gm, ps, vs, ts, onRepairHistory }) {
                             <span style={{ fontSize: '.78rem', fontWeight: 700, color: T.t2, fontVariantNumeric: 'tabular-nums' }}>{fEUR(gm.tc)}</span>
                         </div>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '.24rem .6rem', borderRadius: 6, background: T.s2, border: `1px solid ${T.brd}` }}>
-                            <span style={{ fontSize: '.6rem', color: T.t3, fontWeight: 500 }}>Latent</span>
+                            <span style={{ fontSize: '.6rem', color: T.t3, fontWeight: 500 }}>Latent{gm.latentEstimated ? ' · estimé' : ''}</span>
                             <span title={gm.latent === null ? 'Valeurs avant retrait manquantes dans l’historique' : 'Gain sur le capital encore détenu, au coût moyen proportionnel'} style={{ fontSize: '.78rem', fontWeight: 700, color: gc(gm.latent), fontVariantNumeric: 'tabular-nums' }}>{gm.latent === null ? 'Indisponible' : fEURS(gm.latent)}</span>
-                            {gm.latent === null && onRepairHistory && <button type="button" title="Compléter les valeurs avant retrait manquantes" onClick={onRepairHistory} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: ACC, padding: '2px 0', minHeight: 28, cursor: 'pointer', fontSize: '.68rem', fontFamily: 'inherit' }}><Pencil size={12} />Corriger</button>}
+                            {(gm.latent === null || hasMissingWithdrawalValues || ts.some(entry => entry.valeurAvantEstimation)) && onRepairHistory && <button type="button" title="Vérifier les valeurs avant retrait manquantes ou estimées" onClick={onRepairHistory} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: ACC, padding: '2px 0', minHeight: 28, cursor: 'pointer', fontSize: '.68rem', fontFamily: 'inherit' }}><Pencil size={12} />{gm.latent === null || hasMissingWithdrawalValues ? 'Corriger' : 'Vérifier'}</button>}
                         </div>
                     </div>
                     <div style={{ fontSize: '.7rem', color: T.t3 }}>{ps.filter(p => !p.closedAt).length} active(s) · {ps.filter(p => p.closedAt).length} clôturée(s)</div>
-                    <div style={{ fontSize: '.7rem', color: gc(gm.tg), marginTop: 4 }}>Résultat total {fEURS(gm.tg)}</div>
+                    <div style={{ fontSize: '.7rem', color: gc(gm.tg), marginTop: 4 }}>Résultat total {fEURS(gm.tg)}{gm.valueEstimated ? ' · estimé' : ''}</div>
                 </div>
                 <div style={{ padding: isMobile ? '1rem 1rem .75rem' : '1.25rem 1.25rem 1rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
@@ -1063,6 +1086,7 @@ function HeroBanner({ gm, ps, vs, ts, onRepairHistory }) {
                         </div>
                     </div>
                     <ChartGuide color={chartColor} mode={chartMode} />
+                    {histo.some(point => point.estimated) && <div style={{ fontSize: '.65rem', color: T.t3, marginBottom: 5 }}>Historique comprenant des valeurs estimées.</div>}
                     {chartMode === 'value' ? (
                         <ResponsiveContainer width="100%" height={isMobile ? 140 : 170}>
                             <ComposedChart data={histo} margin={{ top: 22, right: 4, left: -22, bottom: 0 }}>
@@ -1112,7 +1136,7 @@ function PocheCard({ p, vals, txs, total, onClick }) {
                 <div style={{ display: 'flex', gap: 10, fontSize: '.67rem', color: T.t2, marginBottom: '.65rem' }}>
                     <span>Cap. <strong style={{ color: T.t1, fontVariantNumeric: 'tabular-nums' }}>{fEUR(p.capital)}</strong></span>
                     <span style={{ color: T.t3 }}>·</span>
-                    <span>XIRR <strong style={{ color: gc(p.xirr), fontVariantNumeric: 'tabular-nums' }}>{fPctS(p.xirr)}</strong></span>
+                    <span>XIRR{p.valueEstimated && p.xirr !== null ? ' estimé' : ''} <strong style={{ color: gc(p.xirr), fontVariantNumeric: 'tabular-nums' }}>{fPctS(p.xirr)}</strong></span>
                 </div>
                 <div style={{ height: 3, borderRadius: 99, background: T.s3, overflow: 'hidden' }}>
                     <div style={{ width: `${alloc * 100}%`, height: '100%', background: `linear-gradient(90deg,${p.couleur},${p.couleur}80)`, borderRadius: 99, transition: 'width .5s ease', boxShadow: `0 0 6px ${p.couleur}60` }} />
@@ -1147,8 +1171,8 @@ function TxTimeline({ txs, onDel, onRepair }) {
                                     {onDel && <button disabled={!t.id} title={t.id ? 'Supprimer la transaction' : 'Identifiant absent dans le fichier : suppression indisponible'} aria-label="Supprimer la transaction" onClick={() => onDel(t.id)} style={{ background: 'none', border: 'none', color: T.t3, cursor: t.id ? 'pointer' : 'not-allowed', opacity: .5, lineHeight: 0, padding: 4, minWidth: 28, minHeight: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Trash2 size={13} /></button>}
                                 </div>
                                 {t.commentaire && <div style={{ color: T.t2, fontSize: '.67rem', marginTop: 5, lineHeight: 1.45 }}>{t.commentaire}</div>}
-                                {t.valeurAvant !== undefined && <div style={{ color: T.t2, fontSize: '.67rem', marginTop: 5 }}>Valeur avant {t.type === 'retrait' ? 'retrait' : 'apport'} : {fEUR(t.valeurAvant)}</div>}
-                                {t.type === 'retrait' && t.valeurAvant === undefined && onRepair && <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 5 }}><span style={{ color: T.t3, fontSize: '.67rem' }}>Valeur avant retrait manquante</span><Btn ghost onClick={() => onRepair(t)} style={{ padding: '2px 6px', fontSize: '.67rem' }}><Pencil size={11} />Compléter</Btn></div>}
+                                {t.valeurAvant !== undefined && <div style={{ color: T.t2, fontSize: '.67rem', marginTop: 5 }}>Valeur avant {t.type === 'retrait' ? 'retrait' : 'apport'} : {fEUR(t.valeurAvant)}{t.valeurAvantEstimation || t.valeurAvantEstimee ? ' · Estimée' : ''}</div>}
+                                {t.type === 'retrait' && (t.valeurAvant === undefined || t.valeurAvantEstimation) && onRepair && <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 5 }}><span style={{ color: T.t3, fontSize: '.67rem' }}>{t.valeurAvantEstimation ? `Estimation à confirmer · source du ${fDt(t.valeurAvantEstimation.sourceDate)}` : 'Valeur avant retrait manquante'}</span><Btn ghost onClick={() => onRepair(t)} style={{ padding: '2px 6px', fontSize: '.67rem' }}><Pencil size={11} />{t.valeurAvantEstimation ? 'Confirmer' : 'Compléter'}</Btn></div>}
                             </div>
                         </div>
                     );
@@ -1217,6 +1241,7 @@ function PocheDetail({ poche, txs, vals, onBack, onDelTx, onDelVal, onDelPoche, 
     const m = useMemo(() => getPocketMetrics(poche.id, txs, vals, poche.closedAt), [poche, txs, vals]);
     const pv = useMemo(() => vals.filter(v => v.pocheId === poche.id).sort((a, b) => a.date.localeCompare(b.date)), [poche, vals]);
     const pt = useMemo(() => txs.filter(t => t.pocheId === poche.id).sort((a, b) => b.timestamp.localeCompare(a.timestamp)), [poche, txs]);
+    const hasMissingWithdrawalValues = pt.some(entry => entry.type === 'retrait' && entry.valeurAvant === undefined);
     const chart = useMemo(() => buildPocketHistory(poche.id, txs, vals).map(point => ({ ...point, d: point.date })), [poche, txs, vals]);
     const chartDataKey = chartMode === 'value' ? 'v' : chartMode === 'pct' ? 'pct' : 'p';
     const chartLabel = chartMode === 'value' ? 'Valeur' : chartMode === 'pct' ? 'Perf. %' : 'Perf. €';
@@ -1230,9 +1255,9 @@ function PocheDetail({ poche, txs, vals, onBack, onDelTx, onDelVal, onDelPoche, 
 
     const kpis = [
         { label: m.valueEstimated ? 'Valeur estimée' : 'Valeur', value: fEUR(m.valActu), sub: `Capital : ${fEUR(m.capital)}`, color: poche.couleur },
-        { label: poche.closedAt ? 'Résultat final' : 'Gain', value: poche.closedAt ? fEURS(m.gainTotal) : fPctS(gainPct), sub: poche.closedAt ? 'Latent : 0 €' : fEURS(m.gainTotal), color: gc(m.gainTotal) },
-        { label: 'XIRR', value: fPctS(m.xirr), sub: 'Annualisé net', color: gc(m.xirr), info: XIRR_INFO },
-        { label: 'Dietz', value: fPctS(m.dietz), sub: 'Période complète', color: gc(m.dietz), info: DIETZ_INFO },
+        { label: poche.closedAt ? 'Résultat final' : m.valueEstimated ? 'Gain estimé' : 'Gain', value: poche.closedAt ? fEURS(m.gainTotal) : fPctS(gainPct), sub: poche.closedAt ? 'Latent : 0 €' : fEURS(m.gainTotal), color: gc(m.gainTotal) },
+        { label: m.valueEstimated && m.xirr !== null ? 'XIRR estimé' : 'XIRR', value: fPctS(m.xirr), sub: 'Annualisé net', color: gc(m.xirr), info: XIRR_INFO },
+        { label: m.dietzEstimated ? 'Dietz estimé' : 'Dietz', value: fPctS(m.dietz), sub: 'Période complète', color: gc(m.dietz), info: DIETZ_INFO },
     ];
 
     return (
@@ -1277,6 +1302,7 @@ function PocheDetail({ poche, txs, vals, onBack, onDelTx, onDelVal, onDelPoche, 
                         </div>
                     </div>
                     <ChartGuide color={chartColor} mode={chartMode} />
+                    {chart.some(point => point.estimated) && <div style={{ fontSize: '.65rem', color: T.t3, marginBottom: 5 }}>Historique comprenant des valeurs estimées.</div>}
                     {chart.length > 1 ? (
                         chartMode === 'value' ? (
                             <ResponsiveContainer width="100%" height={isMobile ? 160 : 195}>
@@ -1317,9 +1343,9 @@ function PocheDetail({ poche, txs, vals, onBack, onDelTx, onDelVal, onDelPoche, 
                         </SC>
                         <SC title={poche.closedAt ? 'Résultat final' : 'Gain'}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.72rem', color: T.t2, marginBottom: 4 }}><span>{poche.closedAt ? 'Retraits - apports' : 'Valeur - capital'}</span><strong style={{ color: gc(m.gainTotal), fontVariantNumeric: 'tabular-nums' }}>{fEURS(m.gainTotal)}</strong></div>
-                            <div title="Coût moyen proportionnel du capital encore détenu, hors calcul fiscal" style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', fontSize: '.72rem', color: T.t2, marginBottom: 4 }}><span>Latent</span><strong style={{ color: gc(m.gainLatent) }}>{m.gainLatent === null ? 'Indisponible' : fEURS(m.gainLatent)}</strong></div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', fontSize: '.72rem', color: T.t2, marginBottom: 4 }}><span>Réalisé</span><strong style={{ color: gc(m.gainRealise) }}>{m.gainRealise === null ? 'Indisponible' : fEURS(m.gainRealise)}</strong></div>
-                            {m.gainLatent === null && <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}><span style={{ fontSize: '.67rem', color: T.t3 }}>Valeurs avant retrait manquantes dans l’historique.</span><Btn ghost onClick={() => setModal({ type: 'repairHistory', poche: poche.id })} style={{ padding: '2px 6px', fontSize: '.68rem' }}><Pencil size={12} />Corriger</Btn></div>}
+                            <div title="Coût moyen proportionnel du capital encore détenu, hors calcul fiscal" style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', fontSize: '.72rem', color: T.t2, marginBottom: 4 }}><span>Latent{m.latentEstimated ? ' · estimé' : ''}</span><strong style={{ color: gc(m.gainLatent) }}>{m.gainLatent === null ? 'Indisponible' : fEURS(m.gainLatent)}</strong></div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', fontSize: '.72rem', color: T.t2, marginBottom: 4 }}><span>Réalisé{m.realizedEstimated ? ' · estimé' : ''}</span><strong style={{ color: gc(m.gainRealise) }}>{m.gainRealise === null ? 'Indisponible' : fEURS(m.gainRealise)}</strong></div>
+                            {(m.gainLatent === null || hasMissingWithdrawalValues || pt.some(entry => entry.valeurAvantEstimation)) && <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}><span style={{ fontSize: '.67rem', color: T.t3 }}>Valeurs avant retrait manquantes ou estimées dans l’historique.</span><Btn ghost onClick={() => setModal({ type: 'repairHistory', poche: poche.id })} style={{ padding: '2px 6px', fontSize: '.68rem' }}><Pencil size={12} />{m.gainLatent === null || hasMissingWithdrawalValues ? 'Corriger' : 'Vérifier'}</Btn></div>}
                             <div style={{ height: 5, borderRadius: 99, background: T.s3, overflow: 'hidden' }}><div style={{ width: `${Math.min(100, Math.abs(m.gainTotal) / Math.max(Math.abs(m.gainTotal), 1) * 100)}%`, height: '100%', background: poche.couleur, opacity: m.gainTotal >= 0 ? 1 : .55 }} /></div>
                         </SC>
                     </div>
@@ -1343,7 +1369,7 @@ function PocheDetail({ poche, txs, vals, onBack, onDelTx, onDelVal, onDelPoche, 
                                 {[...pv].reverse().map(v => (
                                     <TRow key={v.id}>
                                         <td style={{ ...td, color: T.t2, whiteSpace: 'nowrap' }}><div>{fDt(v.date)}</div>{v.commentaire && <div style={{ fontSize: '.66rem', color: T.t3, marginTop: 3, whiteSpace: 'normal' }}>{v.commentaire}</div>}</td>
-                                        <td style={{ ...td, textAlign: 'right', fontWeight: 600, color: poche.couleur }}>{fEUR(v.valeur)}</td>
+                                        <td style={{ ...td, textAlign: 'right', fontWeight: 600, color: poche.couleur }}>{fEUR(v.valeur)}{v.estimee && <div style={{ fontSize: '.6rem', color: T.t3 }}>Estimée</div>}</td>
                                         <td style={td}>{!poche.closedAt && <button disabled={!!v.transactionId || !v.id} title={!v.id ? 'Identifiant absent dans le fichier : suppression indisponible' : v.transactionId ? 'Valeur liée au mouvement : supprimez la transaction correspondante' : 'Supprimer la valorisation'} aria-label="Supprimer la valorisation" onClick={() => conf('Supprimer cette valorisation ?', () => onDelVal(v.id))} style={{ background: 'none', border: 'none', color: LOSSC, cursor: v.transactionId || !v.id ? 'not-allowed' : 'pointer', opacity: .4, lineHeight: 0, padding: 4, minWidth: 32, minHeight: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Trash2 size={13} /></button>}</td>
                                     </TRow>
                                 ))}
@@ -1426,10 +1452,10 @@ function Dashboard({ pm, gm, ts, vs, ps, setSelP, setModal, dataMode, impJSON, s
                                             <td style={td}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}><Dot c={p.couleur} sz={7} /><span style={{ fontWeight: 600, color: T.t1 }}>{p.nom}</span>{p.closedAt && <Tag label="Clôturée" color={T.t2} />}</span></td>
                                             {!isMobile && <td style={{ ...tdR, color: T.t2 }}>{fEUR(p.capital)}</td>}
                                             <td style={{ ...tdR, fontWeight: 600, color: ACC }}>{fEUR(p.valActu)}{p.valueEstimated && <div style={{ fontSize: '.6rem', color: T.t3 }}>Estimée</div>}</td>
-                                            <td style={{ ...tdR, fontWeight: 700, color: gc(gp) }}>{fPctS(gp)}</td>
-                                            {!isMobile && <td style={{ ...tdR, fontWeight: 500, color: gc(p.gainTotal) }}>{fEURS(p.gainTotal)}</td>}
-                                            <td style={{ ...tdR, fontWeight: 700, color: gc(p.xirr) }}>{fPctS(p.xirr)}</td>
-                                            {!isMobile && <td style={{ ...tdR, color: gc(p.dietz) }}>{fPctS(p.dietz)}</td>}
+                                            <td style={{ ...tdR, fontWeight: 700, color: gc(gp) }}>{fPctS(gp)}{p.valueEstimated && gp !== null && <div style={{ fontSize: '.6rem', color: T.t3 }}>Estimé</div>}</td>
+                                            {!isMobile && <td style={{ ...tdR, fontWeight: 500, color: gc(p.gainTotal) }}>{fEURS(p.gainTotal)}{p.valueEstimated && <div style={{ fontSize: '.6rem', color: T.t3 }}>Estimé</div>}</td>}
+                                            <td style={{ ...tdR, fontWeight: 700, color: gc(p.xirr) }}>{fPctS(p.xirr)}{p.valueEstimated && p.xirr !== null && <div style={{ fontSize: '.6rem', color: T.t3 }}>Estimé</div>}</td>
+                                            {!isMobile && <td style={{ ...tdR, color: gc(p.dietz) }}>{fPctS(p.dietz)}{p.dietzEstimated && <div style={{ fontSize: '.6rem', color: T.t3 }}>Estimé</div>}</td>}
                                         </TRow>
                                     );
                                 })}
@@ -1987,16 +2013,16 @@ export default function App() {
             const movement = txData?.type === 'retrait' ? prepareWithdrawal(pocheId, txData.montant, date, vs, updatedValue, ts)
                 : txData ? prepareContribution(pocheId, txData.montant, date, vs, ts, valeur ?? undefined) : null;
             const transactionId = txData ? uid() : undefined;
-            const nextTs = txData ? [...ts, { id: transactionId, type: txData.type, montant: txData.montant, timestamp: date, pocheId, commentaire: txData.commentaire || note, valeurAvant: movement.valueBefore }] : ts;
-            const nextVs = movement || valeur != null ? [...vs, { id: uid(), pocheId, valeur: movement ? movement.valueAfter : valeur, date, commentaire: note, ...(movement ? { transactionId } : {}) }] : vs;
+            const nextTs = txData ? [...ts, { id: transactionId, type: txData.type, montant: txData.montant, timestamp: date, pocheId, commentaire: txData.commentaire || note, valeurAvant: movement.valueBefore, ...(movement.estimated ? { valeurAvantEstimee: true } : {}) }] : ts;
+            const nextVs = movement || valeur != null ? [...vs, { id: uid(), pocheId, valeur: movement ? movement.valueAfter : valeur, date, commentaire: note, ...(movement ? { transactionId } : {}), ...(movement?.estimated ? { estimee: true } : {}) }] : vs;
             validatePortfolio(ps, nextTs, nextVs);
             markPersonal(); setTs(nextTs); setVs(nextVs); setModal(null);
         }
         catch (err) { alert(err.message); return; }
     };
-    const handleCompleteWithdrawal = (transaction, valueBefore) => {
+    const handleCompleteWithdrawal = (transaction, valueBefore, estimate?: WithdrawalValueEstimate) => {
         try {
-            const next = completeWithdrawalValue(ps, ts, vs, transaction, valueBefore);
+            const next = completeWithdrawalValue(ps, ts, vs, transaction, valueBefore, estimate);
             markPersonal(); setTs(next); return '';
         }
         catch (err) { return err.message || 'La correction n’a pas pu être enregistrée.'; }
